@@ -1,79 +1,79 @@
 # Bitcoin Trading Bot Dashboard
 
-Dashboard web para análisis y simulación de trading de Bitcoin (BTC/MXN) en tiempo real. Obtiene datos de mercado de Bitso y aplica 5 estrategias técnicas ponderadas para generar señales de compra, venta o mantener.
+A real-time web dashboard for Bitcoin (BTC/MXN) trading analysis and simulation. Fetches live market data from Bitso and applies 5 weighted technical strategies to generate buy, sell, or hold signals.
 
-## Características
+## Features
 
-- **Señales en tiempo real** — precio actual, RSI, MACD, Bollinger Bands, EMA, VWAP, soporte y resistencia
-- **5 estrategias técnicas ponderadas** con sistema de votación (-3 a +3):
-  - EMA Crossover (tendencia SMA 50/200)
-  - RSI + Bollinger Bands (sobrecomprado/sobrevendido)
+- **Real-time signals** — current price, RSI, MACD, Bollinger Bands, EMA, VWAP, support and resistance levels
+- **5 weighted technical strategies** with a voting system (-3 to +3):
+  - EMA Crossover (SMA 50/200 trend)
+  - RSI + Bollinger Bands (overbought/oversold)
   - MACD (momentum)
-  - Volumen + VWAP (confirmación de volumen)
-  - Soporte / Resistencia (niveles clave)
-- **Portafolio simulado** — 50,000 MXN de capital inicial, 10% por operación, Stop Loss y Take Profit automáticos basados en ATR
-- **Historial de operaciones** — últimas 20 trades con P&L, razón de cierre y tasa de éxito
-- **Asistente de análisis** — analiza cualquier criptomoneda con escenarios proyectados (optimista, esperado, riesgo)
-- **Gráficas interactivas** — velas OHLCV y RSI con ApexCharts
-- **Mercado global** — datos de CoinMarketCap (top 20 criptos, dominancia BTC/ETH, Fear & Greed)
+  - Volume + VWAP (volume confirmation)
+  - Support / Resistance (key price levels)
+- **Simulated portfolio** — 50,000 MXN initial capital, 10% per trade, automatic Stop Loss and Take Profit based on ATR
+- **Trade history** — last 20 trades with P&L, close reason, and win rate
+- **Analysis assistant** — analyzes any cryptocurrency with projected scenarios (optimistic, expected, risk)
+- **Interactive charts** — OHLCV candlesticks and RSI powered by ApexCharts
+- **Global market panel** — CoinMarketCap data (top 20 cryptos, BTC/ETH dominance, Fear & Greed index)
 
-## Stack
+## Tech Stack
 
-| Capa | Tecnología |
-|------|-----------|
+| Layer | Technology |
+|-------|-----------|
 | Backend | Java 17 · Spring Boot 3.3 · Hibernate/JPA |
-| Base de datos | MySQL 8 |
+| Database | MySQL 8 |
 | Frontend | React 18 · Vite · ApexCharts |
-| APIs externas | Bitso (precio BTC/MXN) · CoinMarketCap (mercado global) |
+| External APIs | Bitso (BTC/MXN price) · CoinMarketCap (global market) |
 
-## Estructura del proyecto
+## Project Structure
 
 ```
 bitcoin-trading-bot/
 ├── backend/                  # Spring Boot
 │   ├── src/main/java/com/trading/bot/
 │   │   ├── controller/       # REST endpoints
-│   │   ├── service/          # Lógica de negocio y estrategias
-│   │   ├── model/            # Entidades JPA
+│   │   ├── service/          # Business logic and strategies
+│   │   ├── model/            # JPA entities
 │   │   ├── repository/       # Spring Data repositories
 │   │   └── dto/              # Data Transfer Objects
 │   └── src/main/resources/
 │       └── application.properties
 └── frontend/                 # React + Vite
     └── src/
-        ├── components/       # Componentes UI
-        ├── services/         # Llamadas a la API
-        └── utils/            # Indicadores técnicos
+        ├── components/       # UI components
+        ├── services/         # API calls
+        └── utils/            # Technical indicators
 ```
 
-## Requisitos previos
+## Prerequisites
 
 - Java 17+
 - MySQL 8+
 - Node.js 18+
 
-## Configuración
+## Configuration
 
-### Base de datos
+### Database
 
-Crea la base de datos en MySQL:
+Create the database in MySQL:
 
 ```sql
 CREATE DATABASE tradingbot;
 ```
 
-### Variables de entorno (opcionales)
+### Environment Variables (optional)
 
-| Variable | Default | Descripción |
+| Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | `jdbc:mysql://localhost:3306/tradingbot` | URL de conexión MySQL |
-| `DB_USER` | `root` | Usuario MySQL |
-| `DB_PASSWORD` | `root` | Contraseña MySQL |
-| `CMC_API_KEY` | _(vacío)_ | API Key de CoinMarketCap (opcional) |
+| `DATABASE_URL` | `jdbc:mysql://localhost:3306/tradingbot` | MySQL connection URL |
+| `DB_USER` | `root` | MySQL username |
+| `DB_PASSWORD` | `root` | MySQL password |
+| `CMC_API_KEY` | _(empty)_ | CoinMarketCap API Key (optional) |
 
-> Sin `CMC_API_KEY` el panel de mercado global no mostrará datos, pero el resto funciona con normalidad.
+> Without `CMC_API_KEY` the global market panel will not display data, but everything else works normally.
 
-## Ejecución
+## Running the App
 
 ### Backend
 
@@ -82,7 +82,7 @@ cd backend
 ./gradlew bootRun
 ```
 
-El servidor inicia en `http://localhost:8080`. Hibernate crea las tablas automáticamente al primer arranque.
+The server starts at `http://localhost:8080`. Hibernate automatically creates the tables on first startup.
 
 ### Frontend
 
@@ -92,21 +92,21 @@ npm install
 npm run dev
 ```
 
-La app estará disponible en `http://localhost:5173`.
+The app will be available at `http://localhost:5173`.
 
-## Endpoints principales
+## API Endpoints
 
-| Método | Endpoint | Descripción |
+| Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/ticker` | Precio actual BTC/MXN |
-| GET | `/api/signal` | Señal de trading con indicadores |
-| GET | `/api/history` | Historial de señales |
-| GET | `/api/ohlcv` | Datos de velas OHLCV |
-| GET | `/api/portfolio` | Estado del portafolio simulado |
-| GET | `/api/trades` | Últimas 20 operaciones |
-| GET | `/api/market` | Datos de mercado global |
-| POST | `/api/analysis` | Análisis de cualquier criptomoneda |
+| GET | `/api/ticker` | Current BTC/MXN price |
+| GET | `/api/signal` | Trading signal with indicators |
+| GET | `/api/history` | Signal history |
+| GET | `/api/ohlcv` | OHLCV candlestick data |
+| GET | `/api/portfolio` | Simulated portfolio state |
+| GET | `/api/trades` | Last 20 trades |
+| GET | `/api/market` | Global market data |
+| POST | `/api/analysis` | Analysis for any cryptocurrency |
 
-## Aviso
+## Disclaimer
 
-Este proyecto es únicamente educativo. No constituye asesoría financiera. Las señales generadas son simulaciones basadas en indicadores técnicos y no garantizan resultados reales.
+This project is for educational purposes only. It does not constitute financial advice. The generated signals are simulations based on technical indicators and do not guarantee real-world results.
