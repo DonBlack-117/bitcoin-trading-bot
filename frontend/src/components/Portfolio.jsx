@@ -1,79 +1,69 @@
+import { Panel } from './ui/Panel.jsx'
+import Delta from './ui/Delta.jsx'
+import { fmtMxn, fmtBtc, fmtNum, trendOf } from '../utils/format.js'
 import './Portfolio.css'
-
-function fmt(n, decimals = 2) {
-  if (n == null) return '—'
-  return n.toLocaleString('es-MX', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
-}
-
-function fmtMxn(n) {
-  if (n == null) return '—'
-  return '$' + fmt(n)
-}
-
-function fmtPct(n) {
-  if (n == null) return '—'
-  const sign = n >= 0 ? '+' : ''
-  return `${sign}${fmt(n)}%`
-}
-
-function PnlSpan({ value }) {
-  if (value == null) return <span>—</span>
-  const cls = value >= 0 ? 'pnl-positive' : 'pnl-negative'
-  return <span className={cls}>{fmtMxn(value)}</span>
-}
 
 function Portfolio({ portfolio }) {
   if (!portfolio) return null
 
   const {
-    initialCapital, mxnBalance, btcBalance, btcPrice, totalValueMxn,
+    initialCapital, mxnBalance, btcBalance, totalValueMxn,
     unrealizedPnl, totalReturn, totalReturnPct,
     totalTrades, winningTrades, winRate,
   } = portfolio
 
-  return (
-    <div className="portfolio card">
-      <h2 className="portfolio-title">Portafolio Simulado</h2>
-      <p className="portfolio-caption">Capital inicial: {fmtMxn(initialCapital)} MXN</p>
+  const cashShare = totalValueMxn ? Math.min(100, Math.max(0, (mxnBalance / totalValueMxn) * 100)) : 100
 
-      <div className="portfolio-grid">
-        <div className="portfolio-item">
-          <span className="portfolio-label">MXN Disponible</span>
-          <span className="portfolio-value">{fmtMxn(mxnBalance)}</span>
-        </div>
-        <div className="portfolio-item">
-          <span className="portfolio-label">BTC en cartera</span>
-          <span className="portfolio-value">{btcBalance != null ? btcBalance.toFixed(8) : '—'} BTC</span>
-        </div>
-        <div className="portfolio-item">
-          <span className="portfolio-label">Valor total</span>
-          <span className="portfolio-value">{fmtMxn(totalValueMxn)}</span>
-        </div>
-        <div className="portfolio-item">
-          <span className="portfolio-label">P&L no realizado</span>
-          <span className="portfolio-value"><PnlSpan value={unrealizedPnl} /></span>
-        </div>
-        <div className="portfolio-item">
-          <span className="portfolio-label">Retorno total</span>
-          <span className={`portfolio-value ${totalReturn >= 0 ? 'pnl-positive' : 'pnl-negative'}`}>
-            {fmtMxn(totalReturn)} ({fmtPct(totalReturnPct)})
+  return (
+    <div className="portfolio-grid">
+      <Panel className="portfolio-total" aria-label="Valor del portafolio">
+        <p className="eyebrow">Valor total</p>
+        <p className="portfolio-value">{fmtMxn(totalValueMxn)}</p>
+        <div className="portfolio-return">
+          <span className={`pnl pnl-${trendOf(totalReturn)}`}>
+            {totalReturn > 0 ? '+' : ''}{fmtMxn(totalReturn)}
           </span>
+          <Delta value={totalReturnPct} />
+          <span className="portfolio-muted">desde {fmtMxn(initialCapital, 0)} iniciales</span>
         </div>
-        <div className="portfolio-item">
-          <span className="portfolio-label">Operaciones cerradas</span>
-          <span className="portfolio-value">{totalTrades ?? 0}</span>
+
+        <div className="alloc">
+          <div className="alloc-bar" role="img" aria-label={`${fmtNum(cashShare, 0)}% en pesos y ${fmtNum(100 - cashShare, 0)}% en BTC`}>
+            <span className="alloc-cash" style={{ width: `${cashShare}%` }} />
+            <span className="alloc-btc" />
+          </div>
+          <dl className="alloc-legend">
+            <div>
+              <dt><span className="alloc-swatch is-cash" /> Pesos disponibles</dt>
+              <dd>{fmtMxn(mxnBalance)}</dd>
+            </div>
+            <div>
+              <dt><span className="alloc-swatch is-btc" /> BTC en cartera</dt>
+              <dd>{fmtBtc(btcBalance)}</dd>
+            </div>
+          </dl>
         </div>
-        <div className="portfolio-item">
-          <span className="portfolio-label">Operaciones ganadoras</span>
-          <span className="portfolio-value">{winningTrades ?? 0}</span>
+      </Panel>
+
+      <Panel className="portfolio-stats" aria-label="Resultados de las operaciones">
+        <div className="stat">
+          <span className="stat-label">P&amp;L no realizado</span>
+          <span className={`stat-value pnl pnl-${trendOf(unrealizedPnl)}`}>{fmtMxn(unrealizedPnl)}</span>
+          <span className="stat-sub">De la operación abierta</span>
         </div>
-        <div className="portfolio-item">
-          <span className="portfolio-label">Tasa de éxito</span>
-          <span className={`portfolio-value ${winRate >= 50 ? 'pnl-positive' : 'pnl-negative'}`}>
-            {fmtPct(winRate)}
-          </span>
+        <div className="stat">
+          <span className="stat-label">Tasa de éxito</span>
+          <span className="stat-value">{winRate != null ? `${fmtNum(winRate, 1)}%` : '—'}</span>
+          <div className="winrate" aria-hidden="true">
+            <span style={{ transform: `scaleX(${Math.min(100, winRate || 0) / 100})` }} />
+          </div>
         </div>
-      </div>
+        <div className="stat">
+          <span className="stat-label">Operaciones cerradas</span>
+          <span className="stat-value">{totalTrades ?? 0}</span>
+          <span className="stat-sub">{winningTrades ?? 0} con ganancia</span>
+        </div>
+      </Panel>
     </div>
   )
 }

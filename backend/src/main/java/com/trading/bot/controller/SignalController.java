@@ -1,15 +1,15 @@
 package com.trading.bot.controller;
 
-import com.trading.bot.dto.OhlcvCandleDTO;
 import com.trading.bot.dto.SignalResponseDTO;
 import com.trading.bot.model.SignalHistory;
-import com.trading.bot.service.BitsoService;
-import com.trading.bot.service.PortfolioService;
 import com.trading.bot.service.SignalHistoryService;
-import com.trading.bot.service.StrategyService;
-import com.trading.bot.service.TradeService;
+import com.trading.bot.service.SignalScheduler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
@@ -17,42 +17,23 @@ import java.util.List;
 @RequestMapping("/api")
 public class SignalController {
 
-    private final BitsoService bitsoService;
-    private final StrategyService strategyService;
-    private final SignalHistoryService signalHistoryService;
-    private final TradeService tradeService;
-    private final PortfolioService portfolioService;
+    private static final Logger log = LoggerFactory.getLogger(SignalController.class);
 
-    public SignalController(BitsoService bitsoService,
-                            StrategyService strategyService,
-                            SignalHistoryService signalHistoryService,
-                            TradeService tradeService,
-                            PortfolioService portfolioService) {
-        this.bitsoService = bitsoService;
-        this.strategyService = strategyService;
+    private final SignalScheduler signalScheduler;
+    private final SignalHistoryService signalHistoryService;
+
+    public SignalController(SignalScheduler signalScheduler,
+                            SignalHistoryService signalHistoryService) {
+        this.signalScheduler = signalScheduler;
         this.signalHistoryService = signalHistoryService;
-        this.tradeService = tradeService;
-        this.portfolioService = portfolioService;
     }
 
     @GetMapping("/signal")
     public ResponseEntity<SignalResponseDTO> getSignal() {
         try {
-            List<OhlcvCandleDTO> candles = bitsoService.getOhlcv(200);
-            SignalResponseDTO signal = strategyService.calculateSignal(candles);
-
-            // Persist signal
-            signalHistoryService.saveSignal(
-                    signal.signal(), signal.price(), signal.confidence(),
-                    signal.scoreBuy(), signal.scoreSell(), signal.votes());
-
-            // Initialise portfolio on first run, then process trade logic
-            portfolioService.ensureInitialized(signal.price());
-            tradeService.processSignal(signal);
-
-            return ResponseEntity.ok(signal);
+            return ResponseEntity.ok(signalScheduler.getLatest());
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("GET /api/signal failed: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -62,6 +43,7 @@ public class SignalController {
         try {
             return ResponseEntity.ok(signalHistoryService.getRecentSignals());
         } catch (Exception e) {
+            log.error("GET /api/history failed: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }

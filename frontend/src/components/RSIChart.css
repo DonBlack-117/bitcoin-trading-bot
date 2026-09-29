@@ -1,29 +1,15 @@
-.rsi-chart {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
+.rsi-last {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
-.rsi-legend {
-  display: flex;
-  gap: var(--spacing-lg);
-  padding-top: var(--spacing-sm);
-  border-top: 1px solid var(--border-color);
-  flex-wrap: wrap;
-}
-
-.rsi-legend-item {
-  font-size: 0.78rem;
-  padding: 3px 8px;
-  border-radius: 4px;
-}
-
-.rsi-sell {
-  color: #ef4444;
-  background-color: rgba(239, 68, 68, 0.1);
-}
-
-.rsi-buy {
-  color: #22c55e;
-  background-color: rgba(34, 197, 94, 0.1);
+.rsi-help {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 0.75rem;
+  color: var(--text-3);
 }

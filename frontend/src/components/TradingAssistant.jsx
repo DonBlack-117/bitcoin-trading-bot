@@ -1,267 +1,251 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useId } from 'react'
 import { fetchCryptoList, fetchAnalysis } from '../services/api.js'
+import { Panel } from './ui/Panel.jsx'
+import Icon from './ui/Icon.jsx'
+import Delta from './ui/Delta.jsx'
+import { fmtMxn, fmtPct, toneOfSignal } from '../utils/format.js'
 import './TradingAssistant.css'
 
-function ScenarioCard({ label, pct, finalMxn, initial, type }) {
-  const isPositive = finalMxn >= initial
+const SIGNAL_ICON = { buy: 'arrowUp', sell: 'arrowDown', hold: 'minus' }
+
+function Scenario({ label, pct, finalMxn, initial, kind }) {
+  const diff = finalMxn - initial
   return (
-    <div className={`scenario-card scenario-${type}`}>
-      <div className="scenario-label">{label}</div>
-      <div className={`scenario-pct ${isPositive ? 'pos' : 'neg'}`}>
-        {pct >= 0 ? '+' : ''}{pct.toFixed(1)}%
+    <div className={`scenario scenario-${kind}`}>
+      <div className="scenario-head">
+        <span className="scenario-label">{label}</span>
+        <span className="scenario-pct">{fmtPct(pct, 1)}</span>
       </div>
-      <div className="scenario-amount">${finalMxn.toLocaleString('es-MX', { maximumFractionDigits: 2 })} MXN</div>
-      <div className="scenario-diff">
-        {isPositive ? '+' : ''}${(finalMxn - initial).toLocaleString('es-MX', { maximumFractionDigits: 2 })}
-      </div>
+      <span className="scenario-amount">{fmtMxn(finalMxn)}</span>
+      <span className={`scenario-diff pnl pnl-${diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat'}`}>
+        {diff > 0 ? '+' : ''}{fmtMxn(diff)}
+      </span>
     </div>
   )
 }
 
 export default function TradingAssistant() {
-  const [cryptoList,  setCryptoList]  = useState([])
-  const [search,      setSearch]      = useState('')
-  const [selected,    setSelected]    = useState(null)
-  const [amount,      setAmount]      = useState('')
+  const [cryptoList,   setCryptoList]   = useState([])
+  const [search,       setSearch]       = useState('')
+  const [selected,     setSelected]     = useState(null)
+  const [amount,       setAmount]       = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
-  const [loading,     setLoading]     = useState(false)
-  const [result,      setResult]      = useState(null)
-  const [error,       setError]       = useState(null)
-  const [listLoading, setListLoading] = useState(true)
-  const dropdownRef = useRef(null)
+  const [highlight,    setHighlight]    = useState(0)
+  const [loading,      setLoading]      = useState(false)
+  const [result,       setResult]       = useState(null)
+  const [error,        setError]        = useState(null)
+  const [fieldError,   setFieldError]   = useState({})
+  const [listLoading,  setListLoading]  = useState(true)
+  const [listFailed,   setListFailed]   = useState(false)
+  const comboRef = useRef(null)
+  const amountRef = useRef(null)
+  const listId = useId()
 
-  // Load crypto list on mount
   useEffect(() => {
     fetchCryptoList()
-      .then(data => { setCryptoList(data); setListLoading(false) })
-      .catch(() => setListLoading(false))
+      .then((data) => setCryptoList(data))
+      .catch(() => setListFailed(true))
+      .finally(() => setListLoading(false))
   }, [])
 
-  // Close dropdown on outside click
   useEffect(() => {
     function handleClick(e) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setShowDropdown(false)
-      }
+      if (comboRef.current && !comboRef.current.contains(e.target)) setShowDropdown(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  const filtered = cryptoList.filter(c =>
-    c.symbol.toLowerCase().includes(search.toLowerCase()) ||
-    c.name.toLowerCase().includes(search.toLowerCase())
-  ).slice(0, 8)
+  const query = search.toLowerCase()
+  const filtered = cryptoList
+    .filter((c) => c.symbol.toLowerCase().includes(query) || c.name.toLowerCase().includes(query))
+    .slice(0, 8)
 
   function selectCrypto(c) {
     setSelected(c)
-    setSearch(c.symbol + ' — ' + c.name)
+    setSearch(`${c.symbol} · ${c.name}`)
     setShowDropdown(false)
     setResult(null)
     setError(null)
+    setFieldError((f) => ({ ...f, crypto: null }))
+    amountRef.current?.focus()
   }
 
-  async function handleAnalyze() {
-    if (!selected)          return setError('Selecciona una criptomoneda')
-    if (!amount || +amount <= 0) return setError('Ingresa un monto mayor a 0')
+  function handleComboKey(e) {
+    if (!showDropdown && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      setShowDropdown(true)
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setHighlight((h) => Math.min(h + 1, filtered.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHighlight((h) => Math.max(h - 1, 0))
+    } else if (e.key === 'Enter' && showDropdown && filtered[highlight]) {
+      e.preventDefault()
+      selectCrypto(filtered[highlight])
+    } else if (e.key === 'Escape') {
+      setShowDropdown(false)
+    }
+  }
+
+  async function handleAnalyze(e) {
+    e?.preventDefault()
+    const errors = {}
+    if (!selected) errors.crypto = 'Elige una criptomoneda de la lista.'
+    if (!amount || +amount <= 0) errors.amount = 'Escribe un monto mayor a 0.'
+    setFieldError(errors)
+    if (errors.crypto || errors.amount) return
+
     setLoading(true)
     setResult(null)
     setError(null)
     try {
       const data = await fetchAnalysis(selected.symbol, parseFloat(amount))
       setResult(data)
-    } catch (e) {
-      setError(e.message || 'Error al analizar. Intenta de nuevo.')
+    } catch (err) {
+      setError(err.message || 'No se pudo analizar. Intenta de nuevo.')
     } finally {
       setLoading(false)
     }
   }
 
-  function handleKeyDown(e) {
-    if (e.key === 'Enter') handleAnalyze()
-  }
-
-  const signalClass = result
-    ? result.signal === 'COMPRAR' ? 'buy'
-    : result.signal === 'VENDER'  ? 'sell'
-    : 'hold'
-    : ''
+  const tone = result ? toneOfSignal(result.signal) : 'hold'
+  const activeOption = showDropdown && filtered[highlight] ? `${listId}-${filtered[highlight].symbol}` : undefined
 
   return (
-    <section className="ta-section">
-      <div className="ta-header">
-        <h2 className="ta-title">🤖 Asistente de Trading</h2>
-        <p className="ta-subtitle">
-          Selecciona una criptomoneda, ingresa cuánto quieres invertir y presiona Enter.
-        </p>
-      </div>
-
-      {/* ── Input panel ── */}
-      <div className="ta-inputs">
-
-        {/* Crypto selector */}
-        <div className="ta-field" ref={dropdownRef}>
-          <label className="ta-label" htmlFor="ta-crypto-input">Criptomoneda</label>
-          <input
-            id="ta-crypto-input"
-            className="ta-input"
-            placeholder={listLoading ? 'Cargando lista...' : 'Buscar: BTC, ETH, SOL...'}
-            value={search}
-            disabled={listLoading}
-            onChange={e => { setSearch(e.target.value); setShowDropdown(true); setSelected(null) }}
-            onFocus={() => setShowDropdown(true)}
-          />
-          {showDropdown && filtered.length > 0 && (
-            <ul className="ta-dropdown">
-              {filtered.map(c => (
-                <li key={c.symbol} className="ta-dropdown-item" onMouseDown={() => selectCrypto(c)}>
-                  <span className="ta-dd-rank">#{c.rank}</span>
-                  <span className="ta-dd-symbol">{c.symbol}</span>
-                  <span className="ta-dd-name">{c.name}</span>
-                  <span className={`ta-dd-pct ${c.pct24h >= 0 ? 'pos' : 'neg'}`}>
-                    {c.pct24h != null ? (c.pct24h >= 0 ? '+' : '') + c.pct24h.toFixed(1) + '%' : '—'}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* Amount input */}
-        <div className="ta-field">
-          <label className="ta-label" htmlFor="ta-amount-input">Monto en MXN</label>
-          <div className="ta-amount-wrapper">
-            <span className="ta-currency">$</span>
-            <input
-              id="ta-amount-input"
-              className="ta-input ta-input-amount"
-              type="number"
-              min="1"
-              placeholder="1000"
-              value={amount}
-              onChange={e => setAmount(e.target.value)}
-              onKeyDown={handleKeyDown}
-            />
-            <span className="ta-currency-label">MXN</span>
+    <div className="assistant">
+      <Panel className="assistant-form-panel">
+        <form className="assistant-form" onSubmit={handleAnalyze} noValidate>
+          <div className={`field ${fieldError.crypto ? 'has-error' : ''}`} ref={comboRef}>
+            <label className="field-label" htmlFor="ta-crypto">Criptomoneda</label>
+            <div className="input-shell">
+              <Icon name="search" size={16} />
+              <input
+                id="ta-crypto"
+                className="input"
+                role="combobox"
+                aria-expanded={showDropdown && filtered.length > 0}
+                aria-controls={listId}
+                aria-autocomplete="list"
+                aria-activedescendant={activeOption}
+                aria-invalid={Boolean(fieldError.crypto)}
+                autoComplete="off"
+                placeholder={listLoading ? 'Cargando lista…' : listFailed ? 'No se pudo cargar la lista' : 'BTC, ETH, SOL…'}
+                value={search}
+                disabled={listLoading || listFailed}
+                onChange={(e) => {
+                  setSearch(e.target.value)
+                  setShowDropdown(true)
+                  setSelected(null)
+                  setHighlight(0)
+                }}
+                onFocus={() => setShowDropdown(true)}
+                onKeyDown={handleComboKey}
+              />
+            </div>
+            {showDropdown && filtered.length > 0 && (
+              <ul className="combo-list" id={listId} role="listbox">
+                {filtered.map((c, i) => (
+                  <li
+                    key={c.symbol}
+                    id={`${listId}-${c.symbol}`}
+                    role="option"
+                    aria-selected={i === highlight}
+                    className="combo-option"
+                    onMouseDown={() => selectCrypto(c)}
+                    onMouseEnter={() => setHighlight(i)}
+                  >
+                    <span className="combo-rank">{c.rank}</span>
+                    <span className="combo-name"><b>{c.symbol}</b> <span>{c.name}</span></span>
+                    <Delta value={c.pct24h} digits={1} />
+                  </li>
+                ))}
+              </ul>
+            )}
+            {fieldError.crypto && <p className="field-error">{fieldError.crypto}</p>}
           </div>
-        </div>
 
-        {/* Analyze button */}
-        <div className="ta-field ta-field-btn">
-          <button
-            className="ta-btn"
-            onClick={handleAnalyze}
-            disabled={loading}
-          >
-            {loading ? <span className="ta-spinner" role="status" aria-label="Analizando..." /> : '⚡ Analizar'}
+          <div className={`field ${fieldError.amount ? 'has-error' : ''}`}>
+            <label className="field-label" htmlFor="ta-amount">Monto a invertir</label>
+            <div className="input-shell">
+              <span className="input-affix">$</span>
+              <input
+                id="ta-amount"
+                ref={amountRef}
+                className="input input-num"
+                type="number"
+                inputMode="decimal"
+                min="1"
+                placeholder="1,000"
+                aria-invalid={Boolean(fieldError.amount)}
+                value={amount}
+                onChange={(e) => {
+                  setAmount(e.target.value)
+                  setFieldError((f) => ({ ...f, amount: null }))
+                }}
+              />
+              <span className="input-affix">MXN</span>
+            </div>
+            {fieldError.amount && <p className="field-error">{fieldError.amount}</p>}
+          </div>
+
+          <button className="btn btn-primary" type="submit" disabled={loading}>
+            <span>{loading ? 'Analizando…' : 'Analizar'}</span>
+            <span className="btn-nub" aria-hidden="true">
+              <Icon name={loading ? 'refresh' : 'arrowRight'} size={16} className={loading ? 'is-spinning' : ''} />
+            </span>
           </button>
-        </div>
-      </div>
+        </form>
+        {error && <p className="form-error" role="alert"><Icon name="alert" size={16} /> {error}</p>}
+      </Panel>
 
-      {error && <p className="ta-error">{error}</p>}
-
-      {/* ── Results ── */}
       {result && (
-        <div className="ta-result">
-
-          {/* Signal banner */}
-          <div className={`ta-signal-banner ta-signal-${signalClass}`}>
-            <span className="ta-signal-emoji">{result.emoji}</span>
-            <div className="ta-signal-info">
-              <span className="ta-signal-label">{result.signal}</span>
-              <span className="ta-signal-name">{result.name} ({result.symbol})</span>
+        <div className={`assistant-result tone-${tone}`} aria-live="polite">
+          <Panel className="result-verdict">
+            <p className="eyebrow">{result.name} ({result.symbol})</p>
+            <div className="verdict">
+              <span className="verdict-icon" aria-hidden="true"><Icon name={SIGNAL_ICON[tone]} size={24} /></span>
+              <span className="verdict-word">{result.signal}</span>
+              <span className="verdict-conf"><b>{result.confidence}%</b> confianza</span>
             </div>
-            <div className="ta-confidence">
-              <span className="ta-conf-num">{result.confidence}%</span>
-              <span className="ta-conf-label">confianza</span>
-            </div>
-          </div>
 
-          {/* Price + scenario */}
-          <div className="ta-result-grid">
-
-            {/* Left: market data + reasons */}
-            <div className="ta-left">
-              <div className="ta-price-row">
-                <div className="ta-price-block">
-                  <span className="ta-price-label">Precio actual</span>
-                  <span className="ta-price-val">
-                    ${result.priceMxn.toLocaleString('es-MX', { maximumFractionDigits: 2 })}
-                    <span className="ta-price-cur"> MXN</span>
-                  </span>
-                </div>
-                <div className="ta-changes">
-                  <Change label="1h"  val={result.pct1h} />
-                  <Change label="24h" val={result.pct24h} />
-                  <Change label="7d"  val={result.pct7d} />
-                </div>
+            <div className="result-price">
+              <div className="stat">
+                <span className="stat-label">Precio actual</span>
+                <span className="stat-value">{fmtMxn(result.priceMxn)}</span>
               </div>
-
-              <div className="ta-units">
-                Con <strong>${parseFloat(result.amountMxn).toLocaleString('es-MX')} MXN</strong> puedes comprar{' '}
-                <strong>{result.unitsToBuy < 0.01
-                  ? result.unitsToBuy.toFixed(6)
-                  : result.unitsToBuy.toFixed(4)
-                } {result.symbol}</strong>
-              </div>
-
-              <div className="ta-reasons">
-                <h4 className="ta-reasons-title">¿Por qué esta recomendación?</h4>
-                <ul className="ta-reasons-list">
-                  {result.reasons.map((r, i) => (
-                    <li key={i} className="ta-reason-item">{r}</li>
-                  ))}
-                </ul>
+              <div className="result-changes">
+                {result.pct1h != null && <span><small>1 h</small><Delta value={result.pct1h} /></span>}
+                {result.pct24h != null && <span><small>24 h</small><Delta value={result.pct24h} /></span>}
+                {result.pct7d != null && <span><small>7 d</small><Delta value={result.pct7d} /></span>}
               </div>
             </div>
 
-            {/* Right: scenario cards */}
-            <div className="ta-right">
-              <h4 className="ta-scenarios-title">Escenarios proyectados</h4>
-              <p className="ta-scenarios-note">
-                Si inviertes ${parseFloat(result.amountMxn).toLocaleString('es-MX')} MXN ahora:
-              </p>
-              <div className="ta-scenarios">
-                <ScenarioCard
-                  label="Optimista"
-                  pct={result.optimisticPct}
-                  finalMxn={result.optimisticMxn}
-                  initial={result.amountMxn}
-                  type="optimistic"
-                />
-                <ScenarioCard
-                  label="Esperado"
-                  pct={result.expectedPct}
-                  finalMxn={result.expectedMxn}
-                  initial={result.amountMxn}
-                  type="expected"
-                />
-                <ScenarioCard
-                  label="Riesgo"
-                  pct={result.riskPct}
-                  finalMxn={result.riskMxn}
-                  initial={result.amountMxn}
-                  type="risk"
-                />
-              </div>
-              <p className="ta-disclaimer">
-                ⚠️ Proyecciones basadas en volatilidad reciente. No garantizan resultados futuros.
-              </p>
+            <p className="result-units">
+              Con <b>{fmtMxn(parseFloat(result.amountMxn))}</b> compras{' '}
+              <b>{result.unitsToBuy < 0.01 ? result.unitsToBuy.toFixed(6) : result.unitsToBuy.toFixed(4)} {result.symbol}</b>.
+            </p>
+
+            <h4 className="reasons-title">Por qué</h4>
+            <ul className="reasons">
+              {result.reasons.map((r, i) => <li key={i}>{r}</li>)}
+            </ul>
+          </Panel>
+
+          <Panel className="result-scenarios">
+            <p className="eyebrow">Si inviertes {fmtMxn(parseFloat(result.amountMxn))} hoy</p>
+            <h4 className="panel-title">Escenarios proyectados</h4>
+            <div className="scenarios">
+              <Scenario label="Optimista" kind="optimistic" pct={result.optimisticPct} finalMxn={result.optimisticMxn} initial={result.amountMxn} />
+              <Scenario label="Esperado" kind="expected" pct={result.expectedPct} finalMxn={result.expectedMxn} initial={result.amountMxn} />
+              <Scenario label="Riesgo" kind="risk" pct={result.riskPct} finalMxn={result.riskMxn} initial={result.amountMxn} />
             </div>
-          </div>
+            <p className="scenarios-note">Proyecciones con la volatilidad reciente. No garantizan resultados.</p>
+          </Panel>
         </div>
       )}
-    </section>
-  )
-}
-
-function Change({ label, val }) {
-  if (val == null) return null
-  const pos = val >= 0
-  return (
-    <div className={`ta-change ${pos ? 'pos' : 'neg'}`}>
-      <span className="ta-change-label">{label}</span>
-      <span className="ta-change-val">{pos ? '+' : ''}{val.toFixed(2)}%</span>
     </div>
   )
 }

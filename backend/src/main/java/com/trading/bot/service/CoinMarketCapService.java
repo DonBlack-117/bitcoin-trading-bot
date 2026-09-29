@@ -127,6 +127,8 @@ public class CoinMarketCapService {
                     fearGreedColor
             );
 
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Error fetching global market data from CoinMarketCap: " + e.getMessage(), e);
         }
@@ -158,6 +160,8 @@ public class CoinMarketCapService {
                 list.add(new CryptoDTO(rank, symbol, name, price, marketCap, volume24h, pct1h, pct24h, pct7d));
             }
             return list;
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Error fetching crypto list: " + e.getMessage(), e);
         }
@@ -169,6 +173,10 @@ public class CoinMarketCapService {
     }
 
     private JsonNode fetchJson(String url) throws Exception {
+        if (cmcApiKey == null || cmcApiKey.isBlank()) {
+            throw new IllegalStateException("Falta la variable de entorno CMC_API_KEY");
+        }
+
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .timeout(Duration.ofSeconds(20))
