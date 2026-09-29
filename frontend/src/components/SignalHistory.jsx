@@ -1,61 +1,42 @@
+import { Panel, PanelHead, EmptyState } from './ui/Panel.jsx'
+import Icon from './ui/Icon.jsx'
+import { fmtMxn, fmtDateTime, toneOfSignal } from '../utils/format.js'
 import './SignalHistory.css'
 
-function SignalBadge({ senal }) {
-  const map = {
-    COMPRAR: { cls: 'badge-buy', label: 'COMPRAR' },
-    VENDER: { cls: 'badge-sell', label: 'VENDER' },
-    MANTENER: { cls: 'badge-hold', label: 'MANTENER' },
-  }
-  const { cls, label } = map[senal] || { cls: 'badge-hold', label: senal }
-  return <span className={`signal-badge ${cls}`}>{label}</span>
-}
+const LABELS = { COMPRAR: 'Comprar', VENDER: 'Vender', MANTENER: 'Mantener' }
 
 function SignalHistory({ history }) {
-  const formatDate = (ts) => {
-    if (!ts) return 'N/A'
-    const d = new Date(ts)
-    return d.toLocaleString('es-MX', {
-      day: '2-digit',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
-
-  const formatMxn = (value) =>
-    new Intl.NumberFormat('es-MX', {
-      style: 'currency',
-      currency: 'MXN',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value)
+  const items = history || []
 
   return (
-    <div className="signal-history card">
-      <h2 className="history-title">Historial de Señales</h2>
+    <Panel className="history-panel" coreClassName="history-core" aria-labelledby="history-title">
+      <PanelHead eyebrow={`${items.length} registros`} title="Historial de señales" id="history-title" />
 
-      {!history || history.length === 0 ? (
-        <div className="history-empty">
-          <span className="empty-icon">📭</span>
-          <span>No hay señales registradas aún</span>
-        </div>
+      {items.length === 0 ? (
+        <EmptyState icon={<Icon name="inbox" size={22} />} title="Todavía no hay señales">
+          El bot guarda una señal cada vez que analiza el mercado.
+        </EmptyState>
       ) : (
-        <ul className="history-list">
-          {history.map((item, index) => (
-            <li key={item.id || index} className="history-item">
-              <div className="history-left">
-                <SignalBadge senal={item.senal} />
-                <span className="history-date">{formatDate(item.timestamp)}</span>
-              </div>
-              <div className="history-right">
-                <span className="history-price">{formatMxn(item.precio)}</span>
-                <span className="history-confidence">{item.confianza}%</span>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <ol className="history-list">
+          {items.map((item, index) => {
+            const tone = toneOfSignal(item.senal)
+            return (
+              <li key={item.id || index} className={`history-item tone-${tone}`}>
+                <span className="history-dot" aria-hidden="true" />
+                <div className="history-main">
+                  <span className="history-signal">{LABELS[item.senal] || item.senal}</span>
+                  <time className="history-date">{fmtDateTime(item.timestamp)}</time>
+                </div>
+                <div className="history-side">
+                  <span className="history-price">{fmtMxn(item.precio, 0)}</span>
+                  <span className="history-conf">{item.confianza}%</span>
+                </div>
+              </li>
+            )
+          })}
+        </ol>
       )}
-    </div>
+    </Panel>
   )
 }
 

@@ -11,22 +11,37 @@ import Portfolio from './components/Portfolio.jsx'
 import TradeHistory from './components/TradeHistory.jsx'
 import TradingAssistant from './components/TradingAssistant.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
+import DashboardSkeleton from './components/DashboardSkeleton.jsx'
+import Icon from './components/ui/Icon.jsx'
+import { Panel, SectionHead, EmptyState } from './components/ui/Panel.jsx'
+import useActiveSection from './hooks/useActiveSection.js'
 import {
   fetchTicker, fetchOhlcv, fetchSignal, fetchMarket,
   fetchHistory, fetchTrades, fetchPortfolio,
 } from './services/api.js'
 
+export const SECTIONS = [
+  { id: 'resumen', label: 'Resumen' },
+  { id: 'graficas', label: 'Gráficas' },
+  { id: 'asistente', label: 'Asistente' },
+  { id: 'portafolio', label: 'Portafolio' },
+  { id: 'mercado', label: 'Mercado' },
+]
+const SECTION_IDS = SECTIONS.map((s) => s.id)
+
 function App() {
-  const [ticker,    setTicker]    = useState(null)
-  const [signal,    setSignal]    = useState(null)
-  const [ohlcv,     setOhlcv]     = useState(null)
-  const [market,    setMarket]    = useState(null)
-  const [history,   setHistory]   = useState([])
-  const [trades,    setTrades]    = useState([])
-  const [portfolio, setPortfolio] = useState(null)
-  const [loading,   setLoading]   = useState(true)
-  const [error,     setError]     = useState(null)
+  const [ticker,     setTicker]     = useState(null)
+  const [signal,     setSignal]     = useState(null)
+  const [ohlcv,      setOhlcv]      = useState(null)
+  const [market,     setMarket]     = useState(null)
+  const [history,    setHistory]    = useState([])
+  const [trades,     setTrades]     = useState([])
+  const [portfolio,  setPortfolio]  = useState(null)
+  const [loading,    setLoading]    = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error,      setError]      = useState(null)
   const [lastUpdate, setLastUpdate] = useState(null)
+  const activeSection = useActiveSection(SECTION_IDS, !loading)
 
   const loadCore = useCallback(async () => {
     try {
@@ -69,86 +84,151 @@ function App() {
   }, [])
 
   const loadAll = useCallback(async () => {
-    setLoading(true)
     await Promise.all([loadCore(), loadOhlcv(), loadMarket()])
-    setLoading(false)
   }, [loadCore, loadOhlcv, loadMarket])
 
-  useEffect(() => { loadAll() }, [loadAll])
+  const refresh = useCallback(async () => {
+    setRefreshing(true)
+    await loadAll()
+    setRefreshing(false)
+  }, [loadAll])
 
-  // Poll every 30s: core data + trades + portfolio
+  useEffect(() => {
+    loadAll().finally(() => setLoading(false))
+  }, [loadAll])
+
+  // Cada 30 s: ticker, señal, historial, operaciones y portafolio
   useEffect(() => {
     const id = setInterval(loadCore, 30000)
     return () => clearInterval(id)
   }, [loadCore])
 
-  // Poll every 300s: ohlcv
+  // Cada 300 s: velas OHLCV
   useEffect(() => {
     const id = setInterval(loadOhlcv, 300000)
     return () => clearInterval(id)
   }, [loadOhlcv])
 
-  // Poll every 120s: market
+  // Cada 120 s: mercado global
   useEffect(() => {
     const id = setInterval(loadMarket, 120000)
     return () => clearInterval(id)
   }, [loadMarket])
 
-  if (loading) {
-    return (
-      <div className="loading-container">
-        <div className="loading-spinner"></div>
-        <p className="loading-text">Cargando datos del mercado...</p>
-      </div>
-    )
-  }
+  if (loading) return <DashboardSkeleton />
+
+  const hasCandles = ohlcv && ohlcv.length > 0
 
   return (
     <div className="app">
-      <Header lastUpdate={lastUpdate} onRefresh={loadAll} />
+      <a className="skip-link" href="#contenido">Saltar al contenido</a>
 
-      <main className="main-content">
+      <Header
+        sections={SECTIONS}
+        activeSection={activeSection}
+        lastUpdate={lastUpdate}
+        onRefresh={refresh}
+        refreshing={refreshing}
+        offline={Boolean(error)}
+      />
+
+      <main className="main" id="contenido">
         {error && (
-          <div className="error-banner">
-            Error al conectar con el servidor: {error}
+          <div className="alert" role="alert">
+            <Icon name="alert" />
+            <div className="alert-text">
+              <strong>No hay conexión con el servidor.</strong>
+              <span>{error}</span>
+            </div>
+            <button type="button" className="btn btn-quiet" onClick={refresh} disabled={refreshing}>
+              Reintentar
+            </button>
           </div>
         )}
 
-        <div className="top-row">
-          <ErrorBoundary>{signal && <SignalCard signal={signal} />}</ErrorBoundary>
-          <ErrorBoundary>{ticker && <PriceMetrics ticker={ticker} />}</ErrorBoundary>
-        </div>
-
-        <ErrorBoundary>
-          {signal && signal.votes && (
-            <IndicatorVotes
-              votes={signal.votes}
-              scoreBuy={signal.scoreBuy}
-              scoreSell={signal.scoreSell}
-            />
+        <section className="section" id="resumen" aria-labelledby="resumen-title">
+          <h2 className="visually-hidden" id="resumen-title">Resumen</h2>
+          {!ticker && !signal && (
+            <Panel>
+              <EmptyState icon={<Icon name="pulse" size={22} />} title="Sin precio ni señal">
+                El backend no respondió. Revisa que esté corriendo en el puerto 8080 y presiona Reintentar.
+              </EmptyState>
+            </Panel>
           )}
-        </ErrorBoundary>
+          <div className="bento">
+            <ErrorBoundary className="span-7">
+              <PriceMetrics ticker={ticker} indicators={signal?.indicators} />
+            </ErrorBoundary>
+            <ErrorBoundary className="span-5">
+              <SignalCard signal={signal} />
+            </ErrorBoundary>
+            <ErrorBoundary className="span-12">
+              {signal?.votes && (
+                <IndicatorVotes
+                  votes={signal.votes}
+                  scoreBuy={signal.scoreBuy}
+                  scoreSell={signal.scoreSell}
+                />
+              )}
+            </ErrorBoundary>
+          </div>
+        </section>
 
-        <ErrorBoundary>
-          {ohlcv && ohlcv.length > 0 && <PriceChart ohlcv={ohlcv} />}
-        </ErrorBoundary>
+        <section className="section" id="graficas" aria-labelledby="graficas-title">
+          <SectionHead
+            index="01"
+            id="graficas-title"
+            title="Gráficas"
+            description="Velas de 1 hora de los últimos 5 días con bandas de Bollinger, y el RSI de 14 periodos."
+          />
+          <div className="bento">
+            <div className="span-8 stack">
+              <ErrorBoundary><PriceChart ohlcv={hasCandles ? ohlcv : null} /></ErrorBoundary>
+              <ErrorBoundary>{hasCandles && <RSIChart ohlcv={ohlcv} />}</ErrorBoundary>
+            </div>
+            <ErrorBoundary className="span-4">
+              <SignalHistory history={history} />
+            </ErrorBoundary>
+          </div>
+        </section>
 
-        <ErrorBoundary><TradingAssistant /></ErrorBoundary>
+        <section className="section" id="asistente" aria-labelledby="asistente-title">
+          <SectionHead
+            index="02"
+            id="asistente-title"
+            title="Asistente de análisis"
+            description="Elige cualquier criptomoneda y un monto en pesos. El bot aplica las mismas estrategias y proyecta tres escenarios."
+          />
+          <ErrorBoundary><TradingAssistant /></ErrorBoundary>
+        </section>
 
-        <div className="bottom-row">
-          <ErrorBoundary>{ohlcv && ohlcv.length > 0 && <RSIChart ohlcv={ohlcv} />}</ErrorBoundary>
-          <ErrorBoundary><SignalHistory history={history} /></ErrorBoundary>
-        </div>
+        <section className="section" id="portafolio" aria-labelledby="portafolio-title">
+          <SectionHead
+            index="03"
+            id="portafolio-title"
+            title="Portafolio simulado"
+            description="El bot invierte el 10% del capital por operación, con Stop Loss y Take Profit calculados con el ATR."
+          />
+          <div className="stack">
+            <ErrorBoundary><Portfolio portfolio={portfolio} /></ErrorBoundary>
+            <ErrorBoundary><TradeHistory trades={trades} /></ErrorBoundary>
+          </div>
+        </section>
 
-        <ErrorBoundary><Portfolio portfolio={portfolio} /></ErrorBoundary>
-
-        <ErrorBoundary><TradeHistory trades={trades} /></ErrorBoundary>
-
-        <ErrorBoundary>{market && <GlobalMarket market={market} />}</ErrorBoundary>
+        <section className="section" id="mercado" aria-labelledby="mercado-title">
+          <SectionHead
+            index="04"
+            id="mercado-title"
+            title="Mercado global"
+            description="Capitalización, dominancia y las 20 criptomonedas más grandes según CoinMarketCap."
+          />
+          <ErrorBoundary><GlobalMarket market={market} /></ErrorBoundary>
+        </section>
       </main>
 
-      <footer className="app-footer">
-        <p>Este dashboard es solo educativo. No es asesoría financiera.</p>
+      <footer className="footer">
+        <p>Proyecto educativo. Las señales son simulaciones con indicadores técnicos y no son asesoría financiera.</p>
+        <p className="footer-meta">Datos de Bitso y CoinMarketCap</p>
       </footer>
     </div>
   )

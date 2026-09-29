@@ -62,16 +62,29 @@ Create the database in MySQL:
 CREATE DATABASE tradingbot;
 ```
 
-### Environment Variables (optional)
+### Local credentials
+
+Create `backend/src/main/resources/application-local.properties` (it is in `.gitignore` and is loaded automatically):
+
+```properties
+spring.datasource.password=${DB_PASSWORD:your-db-password}
+cmc.api.key=${CMC_API_KEY:your-coinmarketcap-key}
+```
+
+### Environment Variables
+
+Environment variables override the local file.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | `jdbc:mysql://localhost:3306/tradingbot` | MySQL connection URL |
-| `DB_USER` | `root` | MySQL username |
-| `DB_PASSWORD` | `root` | MySQL password |
-| `CMC_API_KEY` | _(empty)_ | CoinMarketCap API Key (optional) |
+| `DATABASE_URL` | `jdbc:mysql://localhost:3306/tradingbot` | MySQL/MariaDB connection URL |
+| `DB_USER` | `root` | Database username |
+| `DB_PASSWORD` | _(empty)_ | Database password |
+| `CMC_API_KEY` | _(empty)_ | CoinMarketCap API key (optional) |
+| `BINANCE_API_URL` | `https://data-api.binance.vision` | Binance market data host (the public mirror avoids the 451 region block) |
+| `BOT_SIGNAL_INTERVAL_MS` | `30000` | How often the bot recalculates the signal and processes trades |
 
-> Without `CMC_API_KEY` the global market panel will not display data, but everything else works normally.
+> Without `CMC_API_KEY` the global market panel and the analysis assistant return 503, but everything else works normally.
 
 ## Running the App
 
@@ -80,6 +93,7 @@ CREATE DATABASE tradingbot;
 ```bash
 cd backend
 ./gradlew bootRun
+./gradlew test   # unit tests for the strategies, Bitso helpers and signal history
 ```
 
 The server starts at `http://localhost:8080`. Hibernate automatically creates the tables on first startup.

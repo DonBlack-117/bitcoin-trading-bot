@@ -1,4 +1,5 @@
 import { Component } from 'react'
+import Icon from './ui/Icon.jsx'
 
 export default class ErrorBoundary extends Component {
   constructor(props) {
@@ -15,23 +16,19 @@ export default class ErrorBoundary extends Component {
   }
 
   render() {
+    const { className = '', children } = this.props
     if (this.state.hasError) {
       return (
-        <div style={{
-          padding: '24px',
-          background: 'rgba(239,68,68,0.08)',
-          border: '1px solid rgba(239,68,68,0.3)',
-          borderRadius: '12px',
-          margin: '16px 0',
-          color: '#f87171',
-        }}>
-          <strong>Algo salió mal en este componente.</strong>
-          <pre style={{ fontSize: '12px', marginTop: '8px', color: '#9ca3af', whiteSpace: 'pre-wrap' }}>
-            {this.state.error?.message}
-          </pre>
+        <div className={`boundary-error ${className}`} role="alert">
+          <Icon name="alert" />
+          <div>
+            <strong>Este panel no se pudo mostrar.</strong>
+            <pre>{this.state.error?.message}</pre>
+          </div>
         </div>
       )
     }
-    return this.props.children
+    if (!className) return children
+    return <div className={className}>{children}</div>
   }
 }
