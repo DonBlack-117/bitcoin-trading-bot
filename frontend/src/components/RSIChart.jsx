@@ -1,13 +1,13 @@
 import ReactApexChart from 'react-apexcharts'
-import { computeRsiSeries } from '../utils/indicators.js'
 import { CHART, baseChart, baseGrid, axisLabels } from '../utils/chartTheme.js'
 import { Panel, PanelHead } from './ui/Panel.jsx'
 import './RSIChart.css'
 
-function RSIChart({ ohlcv }) {
-  if (!ohlcv || ohlcv.length < 15) return null
+/** RSI de 14 periodos calculado en el backend, el mismo que usa la señal. */
+function RSIChart({ rsi }) {
+  if (!rsi || rsi.length === 0) return null
 
-  const rsiData = computeRsiSeries(ohlcv, 14)
+  const rsiData = rsi.map((p) => ({ x: p.timestamp * 1000, y: parseFloat(p.value.toFixed(2)) }))
   const last = rsiData.length ? rsiData[rsiData.length - 1].y : null
 
   const threshold = (y, color, text) => ({

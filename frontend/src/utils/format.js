@@ -63,12 +63,26 @@ export function trendOf(value) {
   return value > 0 ? 'up' : 'down'
 }
 
-/** Tono visual de una señal del backend: 'buy' | 'sell' | 'hold'. */
-export function toneOfSignal(signal, cssClass) {
-  if (cssClass === 'signal-buy') return 'buy'
-  if (cssClass === 'signal-sell') return 'sell'
-  if (cssClass === 'signal-hold') return 'hold'
+/** Dólares abreviados: $1.23T, $4.56B, $7.89M. */
+export function fmtLargeUsd(value) {
+  if (!isNum(value)) return '—'
+  if (value >= 1e12) return `$${(value / 1e12).toFixed(2)}T`
+  if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`
+  if (value >= 1e6) return `$${(value / 1e6).toFixed(2)}M`
+  return `$${value.toFixed(2)}`
+}
+
+/** Tono visual de una señal: 'buy' | 'sell' | 'hold'. */
+export function toneOfSignal(signal) {
   if (signal === 'COMPRAR') return 'buy'
   if (signal === 'VENDER') return 'sell'
   return 'hold'
+}
+
+/**
+ * Tono de una señal que puede ser débil. Una señal débil se muestra como 'hold'
+ * (ámbar): indica una inclinación, pero el bot no opera con ella.
+ */
+export function toneOfStrength(signal, strong) {
+  return strong ? toneOfSignal(signal) : 'hold'
 }

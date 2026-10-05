@@ -1,19 +1,21 @@
 package com.trading.bot.model;
 
+import com.trading.bot.domain.SignalType;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+/** Cambios de señal: solo se guarda una fila cuando la señal es distinta de la anterior. */
 @Entity
 @Table(name = "signals_history")
-@Data
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@ToString
 public class SignalHistory {
 
     @Id
@@ -23,11 +25,12 @@ public class SignalHistory {
     @Column(nullable = false)
     private LocalDateTime timestamp;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "senal", length = 50, nullable = false)
-    private String senal;
+    private SignalType senal;
 
-    @Column(nullable = false)
-    private double precio;
+    @Column(nullable = false, precision = 19, scale = 2)
+    private BigDecimal precio;
 
     @Column(nullable = false)
     private int confianza;

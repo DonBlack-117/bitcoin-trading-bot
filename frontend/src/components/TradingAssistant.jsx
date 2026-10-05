@@ -3,7 +3,7 @@ import { fetchCryptoList, fetchAnalysis } from '../services/api.js'
 import { Panel } from './ui/Panel.jsx'
 import Icon from './ui/Icon.jsx'
 import Delta from './ui/Delta.jsx'
-import { fmtMxn, fmtPct, toneOfSignal } from '../utils/format.js'
+import { fmtMxn, fmtPct, toneOfStrength } from '../utils/format.js'
 import './TradingAssistant.css'
 
 const SIGNAL_ICON = { buy: 'arrowUp', sell: 'arrowDown', hold: 'minus' }
@@ -111,7 +111,7 @@ export default function TradingAssistant() {
     }
   }
 
-  const tone = result ? toneOfSignal(result.signal) : 'hold'
+  const tone = result ? toneOfStrength(result.signal, result.strong) : 'hold'
   const activeOption = showDropdown && filtered[highlight] ? `${listId}-${filtered[highlight].symbol}` : undefined
 
   return (
@@ -202,12 +202,15 @@ export default function TradingAssistant() {
       </Panel>
 
       {result && (
-        <div className={`assistant-result tone-${tone}`} aria-live="polite">
+        <div className={`assistant-result tone-${tone}`} aria-live="polite" data-testid="assistant-result">
           <Panel className="result-verdict">
             <p className="eyebrow">{result.name} ({result.symbol})</p>
             <div className="verdict">
               <span className="verdict-icon" aria-hidden="true"><Icon name={SIGNAL_ICON[tone]} size={24} /></span>
-              <span className="verdict-word">{result.signal}</span>
+              <span className="verdict-word" data-testid="assistant-signal">{result.signal}</span>
+              {!result.strong && result.signal !== 'MANTENER' && (
+                <span className="signal-weak" title="Inclinación débil: conviene esperar una confirmación">Débil</span>
+              )}
               <span className="verdict-conf"><b>{result.confidence}%</b> confianza</span>
             </div>
 

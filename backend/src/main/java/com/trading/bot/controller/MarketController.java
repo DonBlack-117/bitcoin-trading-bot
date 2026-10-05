@@ -1,15 +1,18 @@
 package com.trading.bot.controller;
 
+import com.trading.bot.client.BinanceClient;
+import com.trading.bot.dto.ChartDTO;
 import com.trading.bot.dto.GlobalMarketDTO;
 import com.trading.bot.dto.OhlcvCandleDTO;
 import com.trading.bot.dto.TickerDTO;
-import com.trading.bot.service.BitsoService;
 import com.trading.bot.service.CoinMarketCapService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import com.trading.bot.service.MarketDataService;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
@@ -17,50 +20,38 @@ import java.util.List;
 @RequestMapping("/api")
 public class MarketController {
 
-    private static final Logger log = LoggerFactory.getLogger(MarketController.class);
-
-    private final BitsoService bitsoService;
+    private final MarketDataService marketDataService;
     private final CoinMarketCapService coinMarketCapService;
 
-    public MarketController(BitsoService bitsoService, CoinMarketCapService coinMarketCapService) {
-        this.bitsoService = bitsoService;
+    public MarketController(MarketDataService marketDataService, CoinMarketCapService coinMarketCapService) {
+        this.marketDataService = marketDataService;
         this.coinMarketCapService = coinMarketCapService;
     }
 
     @GetMapping("/ticker")
-    public ResponseEntity<TickerDTO> getTicker() {
-        try {
-            TickerDTO ticker = bitsoService.getTicker();
-            return ResponseEntity.ok(ticker);
-        } catch (Exception e) {
-            log.error("GET /api/ticker failed: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+    public TickerDTO getTicker() {
+        return marketDataService.getTicker();
     }
 
     @GetMapping("/ohlcv")
-    public ResponseEntity<List<OhlcvCandleDTO>> getOhlcv(
-            @RequestParam(defaultValue = "120") int limit) {
-        try {
-            List<OhlcvCandleDTO> candles = bitsoService.getOhlcv(limit);
-            return ResponseEntity.ok(candles);
-        } catch (Exception e) {
-            log.error("GET /api/ohlcv failed: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+    public List<OhlcvCandleDTO> getOhlcv(
+            @RequestParam(defaultValue = "120")
+            @Min(value = 1, message = "limit debe ser al menos 1")
+            @Max(value = BinanceClient.MAX_LIMIT, message = "limit no puede pasar de 1000") int limit) {
+        return marketDataService.getCandlesMxn(limit);
+    }
+
+    /** Velas con RSI y bandas de Bollinger calculadas en el backend. */
+    @GetMapping("/chart")
+    public ChartDTO getChart(
+            @RequestParam(defaultValue = "120")
+            @Min(value = 30, message = "limit debe ser al menos 30")
+            @Max(value = BinanceClient.MAX_LIMIT, message = "limit no puede pasar de 1000") int limit) {
+        return marketDataService.getChart(limit);
     }
 
     @GetMapping("/market")
-    public ResponseEntity<?> getMarket() {
-        try {
-            GlobalMarketDTO market = coinMarketCapService.getGlobalMarket();
-            return ResponseEntity.ok(market);
-        } catch (IllegalStateException e) {
-            log.warn("GET /api/market: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(e.getMessage());
-        } catch (Exception e) {
-            log.error("GET /api/market failed: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+    public GlobalMarketDTO getMarket() {
+        return coinMarketCapService.getGlobalMarket();
     }
 }

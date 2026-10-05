@@ -12,6 +12,5 @@ public record GlobalMarketDTO(
         double marketCapChange24h,
         List<CryptoDTO> topCryptos,
         int fearGreedScore,
-        String fearGreedLabel,
-        String fearGreedColor
+        String fearGreedLabel
 ) {}

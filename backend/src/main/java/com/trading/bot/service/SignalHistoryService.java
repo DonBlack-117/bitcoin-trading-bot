@@ -2,50 +2,66 @@ package com.trading.bot.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.trading.bot.domain.Money;
+import com.trading.bot.dto.SignalHistoryDTO;
+import com.trading.bot.dto.SignalResponseDTO;
 import com.trading.bot.model.SignalHistory;
 import com.trading.bot.repository.SignalHistoryRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class SignalHistoryService {
 
     private final SignalHistoryRepository repository;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
+    private final Clock clock;
 
-    public SignalHistoryService(SignalHistoryRepository repository) {
+    public SignalHistoryService(SignalHistoryRepository repository, ObjectMapper objectMapper, Clock clock) {
         this.repository = repository;
+        this.objectMapper = objectMapper;
+        this.clock = clock;
     }
 
-    public void saveSignal(String senal, double precio, int confianza,
-                           int scoreBuy, int scoreSell,
-                           Map<String, Integer> votes) {
-        // Avoid consecutive duplicates
-        SignalHistory last = repository.findTopByOrderByTimestampDesc();
-        if (last != null && last.getSenal().equals(senal)) return;
+    /**
+     * Guarda la señal solo si cambió respecto a la anterior.
+     *
+     * @return id de la fila vigente: la nueva, o la anterior si la señal no cambió
+     */
+    @Transactional
+    public Long record(SignalResponseDTO signal) {
+        Optional<SignalHistory> last = repository.findTopByOrderByTimestampDesc();
+        if (last.isPresent() && last.get().getSenal() == signal.signal()) {
+            return last.get().getId();
+        }
 
-        String breakdown = null;
+        SignalHistory saved = repository.save(SignalHistory.builder()
+                .timestamp(LocalDateTime.now(clock))
+                .senal(signal.signal())
+                .precio(Money.mxn(signal.price()))
+                .confianza(signal.confidence())
+                .scoreBuy(signal.scoreBuy())
+                .scoreSell(signal.scoreSell())
+                .strategyBreakdown(toJson(signal))
+                .build());
+        return saved.getId();
+    }
+
+    @Transactional(readOnly = true)
+    public List<SignalHistoryDTO> getRecentSignals() {
+        return repository.findTop8ByOrderByTimestampDesc().stream().map(SignalHistoryDTO::from).toList();
+    }
+
+    private String toJson(SignalResponseDTO signal) {
         try {
-            breakdown = objectMapper.writeValueAsString(votes);
-        } catch (JsonProcessingException ignored) {}
-
-        SignalHistory signal = SignalHistory.builder()
-                .timestamp(LocalDateTime.now())
-                .senal(senal)
-                .precio(precio)
-                .confianza(confianza)
-                .scoreBuy(scoreBuy)
-                .scoreSell(scoreSell)
-                .strategyBreakdown(breakdown)
-                .build();
-
-        repository.save(signal);
-    }
-
-    public List<SignalHistory> getRecentSignals() {
-        return repository.findTop8ByOrderByTimestampDesc();
+            return objectMapper.writeValueAsString(signal.votes());
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("No se pudieron serializar los votos", e);
+        }
     }
 }

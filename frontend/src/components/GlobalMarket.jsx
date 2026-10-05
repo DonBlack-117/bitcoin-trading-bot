@@ -1,6 +1,5 @@
 import ReactApexChart from 'react-apexcharts'
-import { formatLargeNumber } from '../utils/indicators.js'
-import { fmtUsd, fmtPct, trendOf } from '../utils/format.js'
+import { fmtUsd, fmtPct, fmtLargeUsd, trendOf } from '../utils/format.js'
 import { CHART, baseChart, baseGrid, axisLabels } from '../utils/chartTheme.js'
 import { Panel, PanelHead, EmptyState } from './ui/Panel.jsx'
 import Icon from './ui/Icon.jsx'
@@ -125,13 +124,13 @@ function GlobalMarket({ market }) {
       <div className="market-stats">
         <Panel className="market-cap">
           <p className="eyebrow">Capitalización total</p>
-          <p className="market-cap-value">{formatLargeNumber(totalMarketCap)}</p>
+          <p className="market-cap-value">{fmtLargeUsd(totalMarketCap)}</p>
           <Delta value={marketCapChange24h} suffix="24 h" />
         </Panel>
         <Panel>
           <div className="stat">
             <span className="stat-label">Volumen 24 h</span>
-            <span className="stat-value">{formatLargeNumber(totalVolume24h)}</span>
+            <span className="stat-value">{fmtLargeUsd(totalVolume24h)}</span>
           </div>
         </Panel>
         <Panel>
@@ -201,8 +200,8 @@ function GlobalMarket({ market }) {
                     </span>
                   </td>
                   <td className="num">{fmtUsd(c.price)}</td>
-                  <td className="num">{formatLargeNumber(c.marketCap)}</td>
-                  <td className="num">{formatLargeNumber(c.volume24h)}</td>
+                  <td className="num">{fmtLargeUsd(c.marketCap)}</td>
+                  <td className="num">{fmtLargeUsd(c.volume24h)}</td>
                   <td className={`num pnl pnl-${trendOf(c.pct1h)}`}>{fmtPct(c.pct1h)}</td>
                   <td className={`num pnl pnl-${trendOf(c.pct24h)}`}>{fmtPct(c.pct24h)}</td>
                   <td className={`num pnl pnl-${trendOf(c.pct7d)}`}>{fmtPct(c.pct7d)}</td>

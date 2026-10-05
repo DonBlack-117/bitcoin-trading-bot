@@ -1,6 +1,7 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '3.3.0'
+    id 'jacoco'
+    id 'org.springframework.boot' version '3.5.6'
     id 'io.spring.dependency-management' version '1.1.7'
 }
 
@@ -24,13 +25,35 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-cache'
     implementation 'com.github.ben-manes.caffeine:caffeine'
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-mysql'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'com.mysql:mysql-connector-j'
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:mariadb'
+    // Solo para que Testcontainers compruebe que el contenedor arrancó; la app usa el driver de MySQL
+    testRuntimeOnly 'org.mariadb.jdbc:mariadb-java-client'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
+    finalizedBy jacocoTestReport
+
+    // Testcontainers con Podman sin root: usa su socket si no hay DOCKER_HOST
+    def podmanSocket = file("/run/user/${'id -u'.execute().text.trim()}/podman/podman.sock")
+    if (!System.getenv('DOCKER_HOST') && podmanSocket.exists()) {
+        environment 'DOCKER_HOST', "unix://${podmanSocket}"
+        environment 'TESTCONTAINERS_RYUK_DISABLED', 'true'
+    }
+}
+
+jacocoTestReport {
+    reports {
+        html.required = true
+        xml.required = false
+    }
 }

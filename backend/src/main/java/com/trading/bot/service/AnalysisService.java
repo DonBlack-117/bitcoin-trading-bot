@@ -1,8 +1,10 @@
 package com.trading.bot.service;
 
+import com.trading.bot.domain.SignalType;
 import com.trading.bot.dto.AnalysisRequestDTO;
 import com.trading.bot.dto.AnalysisResponseDTO;
 import com.trading.bot.dto.CryptoDTO;
+import com.trading.bot.exception.NotFoundException;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -18,11 +20,9 @@ public class AnalysisService {
     }
 
     public AnalysisResponseDTO analyze(AnalysisRequestDTO req) {
+        // El controlador ya validó el formato del símbolo y que el monto sea positivo
         String symbol    = req.symbol().toUpperCase().trim();
         double amountMxn = req.amountMxn();
-
-        if (symbol.isBlank())  throw new IllegalArgumentException("El símbolo no puede estar vacío");
-        if (amountMxn <= 0)    throw new IllegalArgumentException("El monto debe ser mayor a 0");
 
         // ── 1. Fetch top 100 in MXN ──────────────────────────────────────────
         List<CryptoDTO> cryptos = cmcService.getCryptoList(100, "MXN");
@@ -30,8 +30,8 @@ public class AnalysisService {
         CryptoDTO crypto = cryptos.stream()
                 .filter(c -> c.symbol().equalsIgnoreCase(symbol))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Criptomoneda '" + symbol + "' no encontrada en el top 100"));
+                .orElseThrow(() -> new NotFoundException("CRYPTO_NOT_FOUND",
+                        "La criptomoneda " + symbol + " no está en el top 100 de CoinMarketCap"));
 
         double priceMxn = crypto.price();
         double pct1h    = crypto.pct1h()  != null ? crypto.pct1h()  : 0.0;
@@ -77,23 +77,24 @@ public class AnalysisService {
         if (pct1h < 0 && pct24h < 0 && pct7d < 0) score -= 2;
 
         // ── 3. Determine signal ───────────────────────────────────────────────
-        String signal, emoji, color;
+        SignalType signal;
+        boolean strong;
         int confidence;
 
         if (score >= 7) {
-            signal = "COMPRAR"; emoji = "🟢"; color = "#22c55e";
+            signal = SignalType.COMPRAR; strong = true;
             confidence = Math.min(92, (int)(55 + score * 3));
         } else if (score <= -7) {
-            signal = "VENDER";  emoji = "🔴"; color = "#ef4444";
+            signal = SignalType.VENDER;  strong = true;
             confidence = Math.min(92, (int)(55 + Math.abs(score) * 3));
         } else if (score >= 3) {
-            signal = "COMPRAR"; emoji = "🟡"; color = "#f59e0b";
+            signal = SignalType.COMPRAR; strong = false;
             confidence = Math.min(68, (int)(45 + score * 3));
         } else if (score <= -3) {
-            signal = "VENDER";  emoji = "🟡"; color = "#f59e0b";
+            signal = SignalType.VENDER;  strong = false;
             confidence = Math.min(68, (int)(45 + Math.abs(score) * 3));
         } else {
-            signal = "MANTENER"; emoji = "⚪"; color = "#6b7280";
+            signal = SignalType.MANTENER; strong = false;
             confidence = 50;
         }
 
@@ -104,11 +105,11 @@ public class AnalysisService {
         double volatility = Math.max(Math.abs(pct24h), 1.5);
 
         double optimisticPct, expectedPct, riskPct;
-        if ("COMPRAR".equals(signal)) {
+        if (signal == SignalType.COMPRAR) {
             optimisticPct = Math.min(volatility * 2.0, 30.0);
             expectedPct   = Math.max(volatility * 0.5, 1.0);
             riskPct       = -volatility * 0.8;
-        } else if ("VENDER".equals(signal)) {
+        } else if (signal == SignalType.VENDER) {
             optimisticPct = volatility * 0.3;   // small upside (missed drop)
             expectedPct   = -volatility * 0.5;
             riskPct       = -Math.min(volatility * 2.0, 30.0);
@@ -127,7 +128,7 @@ public class AnalysisService {
         return new AnalysisResponseDTO(
                 crypto.symbol(), crypto.name(), crypto.rank(),
                 priceMxn, pct1h, pct24h, pct7d, vol, mc,
-                signal, emoji, color, confidence,
+                signal, strong, confidence,
                 reasons,
                 amountMxn, unitsToBuy,
                 optimisticMxn, expectedMxn, riskMxn,
@@ -137,7 +138,7 @@ public class AnalysisService {
 
     private List<String> buildReasons(double pct1h, double pct24h, double pct7d,
                                        double volRatio, double score,
-                                       String signal, String name) {
+                                       SignalType signal, String name) {
         List<String> r = new ArrayList<>();
 
         // 1h
@@ -177,7 +178,7 @@ public class AnalysisService {
         }
 
         // Overall
-        if ("MANTENER".equals(signal)) {
+        if (signal == SignalType.MANTENER) {
             r.add("Con señales ambiguas, lo más prudente es esperar una confirmación antes de operar");
         }
 
