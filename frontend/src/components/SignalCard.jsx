@@ -1,6 +1,6 @@
 import { Panel, PanelHead } from './ui/Panel.jsx'
 import Icon from './ui/Icon.jsx'
-import { toneOfSignal, fmtMxn, fmtNum } from '../utils/format.js'
+import { toneOfStrength, fmtMxn, fmtNum } from '../utils/format.js'
 import './SignalCard.css'
 
 const TONE_ICON = { buy: 'arrowUp', sell: 'arrowDown', hold: 'minus' }
@@ -17,21 +17,22 @@ function rsiText(rsi) {
 function SignalCard({ signal }) {
   if (!signal) return null
 
-  const { signal: signalText, description, cssClass, confidence, rsi, indicators = {} } = signal
+  const { signal: signalText, description, actionable, confidence, rsi, indicators = {} } = signal
   const macdHist = indicators.macdHistogram
-  const tone = toneOfSignal(signalText, cssClass)
+  // Solo las señales con las que opera el bot llevan verde o rojo
+  const tone = toneOfStrength(signalText, actionable)
   const rsiPos = Math.min(100, Math.max(0, rsi || 0))
 
   return (
-    <Panel className={`signal-panel tone-${tone}`} aria-labelledby="signal-title">
+    <Panel className={`signal-panel tone-${tone}`} aria-labelledby="signal-title" data-testid="signal-card">
       <PanelHead eyebrow="Señal del bot" title="Qué hacer ahora" id="signal-title" />
 
       <div className="signal-main">
         <span className="signal-icon" aria-hidden="true">
           <Icon name={TONE_ICON[tone]} size={26} />
         </span>
-        <p className="signal-word">{signalText}</p>
-        {tone === 'hold' && signalText !== 'MANTENER' && (
+        <p className="signal-word" data-testid="signal-word">{signalText}</p>
+        {!actionable && signalText !== 'MANTENER' && (
           <span className="signal-weak" title="Confianza menor a 60%: el bot no opera con esta señal">Débil</span>
         )}
       </div>

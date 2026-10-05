@@ -14,22 +14,22 @@ function SignalHistory({ history }) {
 
       {items.length === 0 ? (
         <EmptyState icon={<Icon name="inbox" size={22} />} title="Todavía no hay señales">
-          El bot guarda una señal cada vez que analiza el mercado.
+          El bot analiza el mercado cada 30 segundos y guarda la señal solo cuando cambia.
         </EmptyState>
       ) : (
-        <ol className="history-list">
+        <ol className="history-list" data-testid="signal-history">
           {items.map((item, index) => {
-            const tone = toneOfSignal(item.senal)
+            const tone = toneOfSignal(item.signal)
             return (
               <li key={item.id || index} className={`history-item tone-${tone}`}>
                 <span className="history-dot" aria-hidden="true" />
                 <div className="history-main">
-                  <span className="history-signal">{LABELS[item.senal] || item.senal}</span>
+                  <span className="history-signal">{LABELS[item.signal] || item.signal}</span>
                   <time className="history-date">{fmtDateTime(item.timestamp)}</time>
                 </div>
                 <div className="history-side">
-                  <span className="history-price">{fmtMxn(item.precio, 0)}</span>
-                  <span className="history-conf">{item.confianza}%</span>
+                  <span className="history-price">{fmtMxn(item.price, 0)}</span>
+                  <span className="history-conf">{item.confidence}%</span>
                 </div>
               </li>
             )

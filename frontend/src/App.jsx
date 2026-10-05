@@ -15,8 +15,9 @@ import DashboardSkeleton from './components/DashboardSkeleton.jsx'
 import Icon from './components/ui/Icon.jsx'
 import { Panel, SectionHead, EmptyState } from './components/ui/Panel.jsx'
 import useActiveSection from './hooks/useActiveSection.js'
+import usePolling from './hooks/usePolling.js'
 import {
-  fetchTicker, fetchOhlcv, fetchSignal, fetchMarket,
+  fetchTicker, fetchChart, fetchSignal, fetchMarket,
   fetchHistory, fetchTrades, fetchPortfolio,
 } from './services/api.js'
 
@@ -32,7 +33,7 @@ const SECTION_IDS = SECTIONS.map((s) => s.id)
 function App() {
   const [ticker,     setTicker]     = useState(null)
   const [signal,     setSignal]     = useState(null)
-  const [ohlcv,      setOhlcv]      = useState(null)
+  const [chart,      setChart]      = useState(null)
   const [market,     setMarket]     = useState(null)
   const [history,    setHistory]    = useState([])
   const [trades,     setTrades]     = useState([])
@@ -65,12 +66,12 @@ function App() {
     }
   }, [])
 
-  const loadOhlcv = useCallback(async () => {
+  const loadChart = useCallback(async () => {
     try {
-      const data = await fetchOhlcv(120)
-      setOhlcv(data)
+      const data = await fetchChart(120)
+      setChart(data)
     } catch (err) {
-      console.error('Error loading OHLCV:', err)
+      console.error('Error loading chart:', err)
     }
   }, [])
 
@@ -84,8 +85,8 @@ function App() {
   }, [])
 
   const loadAll = useCallback(async () => {
-    await Promise.all([loadCore(), loadOhlcv(), loadMarket()])
-  }, [loadCore, loadOhlcv, loadMarket])
+    await Promise.all([loadCore(), loadChart(), loadMarket()])
+  }, [loadCore, loadChart, loadMarket])
 
   const refresh = useCallback(async () => {
     setRefreshing(true)
@@ -97,27 +98,15 @@ function App() {
     loadAll().finally(() => setLoading(false))
   }, [loadAll])
 
-  // Cada 30 s: ticker, señal, historial, operaciones y portafolio
-  useEffect(() => {
-    const id = setInterval(loadCore, 30000)
-    return () => clearInterval(id)
-  }, [loadCore])
-
-  // Cada 300 s: velas OHLCV
-  useEffect(() => {
-    const id = setInterval(loadOhlcv, 300000)
-    return () => clearInterval(id)
-  }, [loadOhlcv])
-
-  // Cada 120 s: mercado global
-  useEffect(() => {
-    const id = setInterval(loadMarket, 120000)
-    return () => clearInterval(id)
-  }, [loadMarket])
+  // Solo con la pestaña visible: ticker, señal y portafolio cada 30 s,
+  // velas cada 5 min y mercado global cada 2 min
+  usePolling(loadCore, 30000)
+  usePolling(loadChart, 300000)
+  usePolling(loadMarket, 120000)
 
   if (loading) return <DashboardSkeleton />
 
-  const hasCandles = ohlcv && ohlcv.length > 0
+  const hasCandles = chart?.candles?.length > 0
 
   return (
     <div className="app">
@@ -134,7 +123,7 @@ function App() {
 
       <main className="main" id="contenido">
         {error && (
-          <div className="alert" role="alert">
+          <div className="alert" role="alert" data-testid="connection-alert">
             <Icon name="alert" />
             <div className="alert-text">
               <strong>No hay conexión con el servidor.</strong>
@@ -183,8 +172,8 @@ function App() {
           />
           <div className="bento">
             <div className="span-8 stack">
-              <ErrorBoundary><PriceChart ohlcv={hasCandles ? ohlcv : null} /></ErrorBoundary>
-              <ErrorBoundary>{hasCandles && <RSIChart ohlcv={ohlcv} />}</ErrorBoundary>
+              <ErrorBoundary><PriceChart chart={hasCandles ? chart : null} /></ErrorBoundary>
+              <ErrorBoundary>{hasCandles && <RSIChart rsi={chart.rsi} />}</ErrorBoundary>
             </div>
             <ErrorBoundary className="span-4">
               <SignalHistory history={history} />
@@ -228,7 +217,7 @@ function App() {
 
       <footer className="footer">
         <p>Proyecto educativo. Las señales son simulaciones con indicadores técnicos y no son asesoría financiera.</p>
-        <p className="footer-meta">Datos de Bitso y CoinMarketCap</p>
+        <p className="footer-meta">Datos de Bitso, Binance y CoinMarketCap</p>
       </footer>
     </div>
   )

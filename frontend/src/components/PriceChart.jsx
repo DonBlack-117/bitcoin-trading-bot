@@ -1,23 +1,23 @@
 import ReactApexChart from 'react-apexcharts'
-import { computeBollingerSeries } from '../utils/indicators.js'
 import { CHART, baseChart, baseGrid, axisLabels } from '../utils/chartTheme.js'
 import { Panel, PanelHead, EmptyState } from './ui/Panel.jsx'
 import Icon from './ui/Icon.jsx'
 import './PriceChart.css'
 
-function PriceChart({ ohlcv }) {
-  if (!ohlcv || ohlcv.length === 0) {
+/** Velas y bandas de Bollinger; ambas vienen calculadas del backend (GET /api/chart). */
+function PriceChart({ chart }) {
+  if (!chart || chart.candles.length === 0) {
     return (
       <Panel aria-labelledby="price-chart-title">
         <PanelHead eyebrow="BTC/MXN · velas de 1 h" title="Precio" id="price-chart-title" />
         <EmptyState icon={<Icon name="chart" size={22} />} title="Sin velas por ahora">
-          Bitso no devolvió datos OHLCV. Se vuelve a intentar cada 5 minutos.
+          Binance no devolvió velas. Se vuelve a intentar cada 5 minutos.
         </EmptyState>
       </Panel>
     )
   }
 
-  const candleData = ohlcv.map((c) => ({
+  const candleData = chart.candles.map((c) => ({
     x: new Date(c.timestamp * 1000),
     y: [
       parseFloat(c.open.toFixed(2)),
@@ -27,7 +27,10 @@ function PriceChart({ ohlcv }) {
     ],
   }))
 
-  const { upper, middle, lower } = computeBollingerSeries(ohlcv, 20)
+  const band = (key) => chart.bollinger.map((b) => ({ x: b.timestamp * 1000, y: parseFloat(b[key].toFixed(2)) }))
+  const upper = band('upper')
+  const middle = band('middle')
+  const lower = band('lower')
 
   const series = [
     { name: 'BTC/MXN', type: 'candlestick', data: candleData },

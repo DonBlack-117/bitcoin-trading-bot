@@ -1,7 +1,9 @@
 package com.trading.bot.service;
 
+import com.trading.bot.domain.Money;
 import com.trading.bot.dto.OhlcvCandleDTO;
 import com.trading.bot.dto.SignalResponseDTO;
+import com.trading.bot.exception.SignalNotReadyException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -12,14 +14,17 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Recalcula la señal en segundo plano, la guarda y procesa las operaciones simuladas.
- * GET /api/signal solo lee la última señal, así el trabajo no depende de cuántas pestañas estén abiertas.
+ * GET /api/signal solo lee la última señal: una petición nunca abre ni cierra operaciones.
  */
 @Component
 public class SignalScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(SignalScheduler.class);
 
-    private final BitsoService bitsoService;
+    /** 200 velas de 1 h: lo que necesita la SMA 200. */
+    static final int CANDLES = 200;
+
+    private final MarketDataService marketDataService;
     private final StrategyService strategyService;
     private final SignalHistoryService signalHistoryService;
     private final TradeService tradeService;
@@ -27,12 +32,12 @@ public class SignalScheduler {
 
     private final AtomicReference<SignalResponseDTO> latest = new AtomicReference<>();
 
-    public SignalScheduler(BitsoService bitsoService,
+    public SignalScheduler(MarketDataService marketDataService,
                            StrategyService strategyService,
                            SignalHistoryService signalHistoryService,
                            TradeService tradeService,
                            PortfolioService portfolioService) {
-        this.bitsoService = bitsoService;
+        this.marketDataService = marketDataService;
         this.strategyService = strategyService;
         this.signalHistoryService = signalHistoryService;
         this.tradeService = tradeService;
@@ -44,30 +49,29 @@ public class SignalScheduler {
         try {
             refresh();
         } catch (Exception e) {
-            log.error("Scheduled signal update failed: {}", e.getMessage());
+            log.error("No se pudo actualizar la señal: {}", e.getMessage(), e);
         }
     }
 
     /** Calcula la señal, la persiste y procesa la lógica de operaciones. */
     public synchronized SignalResponseDTO refresh() {
-        List<OhlcvCandleDTO> candles = bitsoService.getOhlcv(200);
+        List<OhlcvCandleDTO> candles = marketDataService.getCandlesMxn(CANDLES);
         SignalResponseDTO signal = strategyService.calculateSignal(candles);
 
-        signalHistoryService.saveSignal(
-                signal.signal(), signal.price(), signal.confidence(),
-                signal.scoreBuy(), signal.scoreSell(), signal.votes());
-
-        // Inicializa el portafolio la primera vez y luego procesa las operaciones
-        portfolioService.ensureInitialized(signal.price());
-        tradeService.processSignal(signal);
+        Long historyId = signalHistoryService.record(signal);
+        portfolioService.ensureInitialized(Money.mxn(signal.price()));
+        tradeService.processSignal(signal, historyId);
 
         latest.set(signal);
         return signal;
     }
 
-    /** Última señal calculada; si todavía no hay ninguna, la calcula en ese momento. */
+    /** Última señal calculada. Antes de la primera corrida responde SIGNAL_NOT_READY. */
     public SignalResponseDTO getLatest() {
         SignalResponseDTO signal = latest.get();
-        return signal != null ? signal : refresh();
+        if (signal == null) {
+            throw new SignalNotReadyException();
+        }
+        return signal;
     }
 }
