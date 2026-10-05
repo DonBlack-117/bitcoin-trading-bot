@@ -7,5 +7,6 @@ import java.util.Optional;
 
 public interface PortfolioSnapshotRepository extends JpaRepository<PortfolioSnapshot, Long> {
 
-    Optional<PortfolioSnapshot> findTopByOrderBySnapshotAtDesc();
+    /** Desempate por id: dos snapshots pueden caer en el mismo microsegundo. */
+    Optional<PortfolioSnapshot> findTopByOrderBySnapshotAtDescIdDesc();
 }

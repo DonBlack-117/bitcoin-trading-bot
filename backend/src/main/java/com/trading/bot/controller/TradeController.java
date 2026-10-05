@@ -2,67 +2,47 @@ package com.trading.bot.controller;
 
 import com.trading.bot.dto.PortfolioDTO;
 import com.trading.bot.dto.TradeDTO;
-import com.trading.bot.service.BitsoService;
+import com.trading.bot.service.MarketDataService;
 import com.trading.bot.service.PortfolioService;
 import com.trading.bot.service.TradeService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/api")
 public class TradeController {
 
-    private static final Logger log = LoggerFactory.getLogger(TradeController.class);
-
     private final TradeService tradeService;
     private final PortfolioService portfolioService;
-    private final BitsoService bitsoService;
+    private final MarketDataService marketDataService;
 
     public TradeController(TradeService tradeService,
                            PortfolioService portfolioService,
-                           BitsoService bitsoService) {
-        this.tradeService    = tradeService;
-        this.portfolioService = portfolioService;
-        this.bitsoService    = bitsoService;
+                           MarketDataService marketDataService) {
+        this.tradeService      = tradeService;
+        this.portfolioService  = portfolioService;
+        this.marketDataService = marketDataService;
     }
 
     @GetMapping("/trades")
-    public ResponseEntity<List<TradeDTO>> getTrades() {
-        try {
-            double price = bitsoService.getTicker().last();
-            return ResponseEntity.ok(tradeService.getRecentTrades(price));
-        } catch (Exception e) {
-            log.error("GET /api/trades failed: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+    public List<TradeDTO> getTrades() {
+        return tradeService.getRecentTrades(marketDataService.currentPrice());
     }
 
+    /** 204 si no hay operación abierta. */
     @GetMapping("/trades/open")
     public ResponseEntity<TradeDTO> getOpenTrade() {
-        try {
-            double price = bitsoService.getTicker().last();
-            Optional<TradeDTO> open = tradeService.getOpenTrade(price);
-            return open.map(ResponseEntity::ok)
-                       .orElse(ResponseEntity.noContent().build());
-        } catch (Exception e) {
-            log.error("GET /api/trades/open failed: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+        return tradeService.getOpenTrade(marketDataService.currentPrice())
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.noContent().build());
     }
 
     @GetMapping("/portfolio")
-    public ResponseEntity<PortfolioDTO> getPortfolio() {
-        try {
-            double price = bitsoService.getTicker().last();
-            return ResponseEntity.ok(portfolioService.getPortfolio(price));
-        } catch (Exception e) {
-            log.error("GET /api/portfolio failed: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+    public PortfolioDTO getPortfolio() {
+        return portfolioService.getPortfolio(marketDataService.currentPrice());
     }
 }

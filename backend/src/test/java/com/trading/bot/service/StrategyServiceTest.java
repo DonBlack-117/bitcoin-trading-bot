@@ -1,7 +1,9 @@
 package com.trading.bot.service;
 
+import com.trading.bot.domain.SignalType;
 import com.trading.bot.dto.OhlcvCandleDTO;
 import com.trading.bot.dto.SignalResponseDTO;
+import com.trading.bot.support.TestData;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -13,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class StrategyServiceTest {
 
-    private final StrategyService strategy = new StrategyService();
+    private final StrategyService strategy = new StrategyService(TestData.properties(), TestData.CLOCK);
 
     /** Velas de 1 h con cierres en línea recta: start + i * step. */
     private static List<OhlcvCandleDTO> linear(int count, double start, double step) {
@@ -28,8 +30,8 @@ class StrategyServiceTest {
 
     @Test
     void rejectsFewerThan30Candles() {
-        assertThrows(RuntimeException.class, () -> strategy.calculateSignal(linear(29, 1000, 1)));
-        assertThrows(RuntimeException.class, () -> strategy.calculateSignal(null));
+        assertThrows(IllegalArgumentException.class, () -> strategy.calculateSignal(linear(29, 1000, 1)));
+        assertThrows(IllegalArgumentException.class, () -> strategy.calculateSignal(null));
     }
 
     @Test
@@ -78,15 +80,15 @@ class StrategyServiceTest {
             assertEquals(price, s.price(), 1e-6);
 
             if (buy >= 6 && buy > sell) {
-                assertEquals("COMPRAR", s.signal());
-                assertEquals("signal-buy", s.cssClass());
+                assertEquals(SignalType.COMPRAR, s.signal());
             } else if (sell >= 6 && sell > buy) {
-                assertEquals("VENDER", s.signal());
-                assertEquals("signal-sell", s.cssClass());
+                assertEquals(SignalType.VENDER, s.signal());
             } else {
-                assertEquals("signal-hold", s.cssClass());
                 assertTrue(s.confidence() <= 68, "una señal débil no debe pasar de 68%");
+                assertFalse(s.actionable(), "el bot no opera con una señal débil");
             }
+            assertEquals(s.signal() != SignalType.MANTENER && s.confidence() >= 60, s.actionable());
+            assertEquals(TestData.CLOCK.instant(), s.calculatedAt());
         }
     }
 
