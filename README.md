@@ -171,3 +171,7 @@ Binance candles are in USD and are converted to pesos with today's implied rate 
 ## Disclaimer
 
 This project is for educational purposes only. It does not constitute financial advice. The generated signals are simulations based on technical indicators and do not guarantee real-world results.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
