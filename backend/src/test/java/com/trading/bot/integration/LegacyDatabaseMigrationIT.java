@@ -46,8 +46,9 @@ class LegacyDatabaseMigrationIT extends MariaDbContainerSupport {
                 .load();
         var result = flyway.migrate();
 
-        assertThat(result.migrationsExecuted).isEqualTo(1);
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("2");
+        // Sobre la base ya existente (baseline en V1) se aplican V2 (DECIMAL) y V3 (una sola OPEN).
+        assertThat(result.migrationsExecuted).isEqualTo(2);
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("3");
 
         Map<String, Object> snapshot = jdbc.queryForMap("SELECT * FROM portfolio_snapshots");
         assertThat((BigDecimal) snapshot.get("mxn_balance")).isEqualByComparingTo("50000.00");

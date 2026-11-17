@@ -1,10 +1,16 @@
 import useReveal from '../../hooks/useReveal.js'
 
 /** Contenedor de doble bisel: carcasa exterior + núcleo interior. */
-export function Panel({ as: Tag = 'article', className = '', coreClassName = '', children, ...rest }) {
-  const ref = useReveal()
+export function Panel({
+  as: Tag = 'article',
+  className = '',
+  coreClassName = '',
+  children,
+  ...rest
+}) {
+  const [ref, visible] = useReveal()
   return (
-    <Tag ref={ref} className={`panel reveal ${className}`} {...rest}>
+    <Tag ref={ref} className={`panel reveal ${visible ? 'is-visible' : ''} ${className}`} {...rest}>
       <div className={`panel-core ${coreClassName}`}>{children}</div>
     </Tag>
   )
@@ -15,7 +21,9 @@ export function PanelHead({ eyebrow, title, id, children }) {
     <header className="panel-head">
       <div className="panel-head-text">
         {eyebrow && <p className="eyebrow">{eyebrow}</p>}
-        <h3 className="panel-title" id={id}>{title}</h3>
+        <h3 className="panel-title" id={id}>
+          {title}
+        </h3>
       </div>
       {children && <div className="panel-head-actions">{children}</div>}
     </header>
@@ -25,9 +33,13 @@ export function PanelHead({ eyebrow, title, id, children }) {
 export function SectionHead({ index, title, description, id }) {
   return (
     <header className="section-head">
-      <p className="section-index"><span>{index}</span></p>
+      <p className="section-index">
+        <span>{index}</span>
+      </p>
       <div>
-        <h2 className="section-title" id={id}>{title}</h2>
+        <h2 className="section-title" id={id}>
+          {title}
+        </h2>
         {description && <p className="section-desc">{description}</p>}
       </div>
     </header>

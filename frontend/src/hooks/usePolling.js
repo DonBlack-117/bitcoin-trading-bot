@@ -1,20 +1,32 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 
 /**
  * Llama a `callback` cada `intervalMs` mientras la pestaña está visible.
  * Con la pestaña oculta no consulta; al volver, actualiza en ese momento.
+ * No deja que dos llamadas se solapen ni que una promesa rechazada quede sin manejar.
  */
 export default function usePolling(callback, intervalMs) {
   const saved = useRef(callback)
+  const inFlight = useRef(false)
 
-  useEffect(() => {
+  // useLayoutEffect: el callback queda actualizado antes de que corra cualquier tick.
+  useLayoutEffect(() => {
     saved.current = callback
   }, [callback])
 
   useEffect(() => {
     let id = null
+    const run = () => {
+      if (inFlight.current) return
+      inFlight.current = true
+      Promise.resolve(saved.current())
+        .catch((err) => console.error('Error en el polling:', err))
+        .finally(() => {
+          inFlight.current = false
+        })
+    }
     const start = () => {
-      if (id === null) id = setInterval(() => saved.current(), intervalMs)
+      if (id === null) id = setInterval(run, intervalMs)
     }
     const stop = () => {
       clearInterval(id)
@@ -24,7 +36,7 @@ export default function usePolling(callback, intervalMs) {
       if (document.hidden) {
         stop()
       } else {
-        saved.current()
+        run()
         start()
       }
     }

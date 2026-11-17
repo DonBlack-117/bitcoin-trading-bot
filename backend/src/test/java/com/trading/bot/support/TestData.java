@@ -18,8 +18,9 @@ public final class TestData {
     private TestData() {}
 
     public static BotProperties properties() {
+        // cooldownMinutes = 0: la mayoría de las pruebas no ejercitan el enfriamiento.
         return new BotProperties(new BigDecimal("50000"), 60, new BigDecimal("0.10"),
-                new BigDecimal("100"), 2.0, 3.0);
+                new BigDecimal("100"), 2.0, 3.0, 0);
     }
 
     public static SignalResponseDTO signal(SignalType type, int confidence, boolean actionable,

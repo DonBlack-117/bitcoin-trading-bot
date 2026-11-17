@@ -1,20 +1,25 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-/** Agrega la clase `is-visible` cuando el elemento entra en pantalla. */
+/**
+ * Marca el elemento como visible cuando entra en pantalla. Devuelve [ref, visible] y el que llama
+ * compone la clase `is-visible`: así React no borra la clase al reescribir className (p. ej. al
+ * cambiar el tono del panel), que antes dejaba el panel en opacity:0 para siempre.
+ */
 export default function useReveal() {
   const ref = useRef(null)
+  const [visible, setVisible] = useState(false)
 
   useEffect(() => {
     const node = ref.current
     if (!node) return
     if (typeof IntersectionObserver === 'undefined') {
-      node.classList.add('is-visible')
+      setVisible(true)
       return
     }
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          node.classList.add('is-visible')
+          setVisible(true)
           observer.disconnect()
         }
       },
@@ -24,5 +29,5 @@ export default function useReveal() {
     return () => observer.disconnect()
   }, [])
 
-  return ref
+  return [ref, visible]
 }

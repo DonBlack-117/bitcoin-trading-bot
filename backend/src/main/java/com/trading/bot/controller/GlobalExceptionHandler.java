@@ -8,7 +8,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
@@ -19,7 +22,6 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
-
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(ApiException.class)
@@ -46,8 +48,10 @@ public class GlobalExceptionHandler {
         return badRequest(message);
     }
 
-    @ExceptionHandler({ConstraintViolationException.class, IllegalArgumentException.class})
-    ResponseEntity<ApiError> handleInvalid(RuntimeException e) {
+    // Solo la validación de restricciones es culpa del cliente. Un IllegalArgumentException interno
+    // (p. ej. un invariante roto) es un bug del servidor y debe caer en el handler genérico como 500.
+    @ExceptionHandler(ConstraintViolationException.class)
+    ResponseEntity<ApiError> handleInvalid(ConstraintViolationException e) {
         return badRequest(e.getMessage());
     }
 
@@ -56,9 +60,32 @@ public class GlobalExceptionHandler {
         return badRequest("Valor inválido para " + e.getName());
     }
 
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    ResponseEntity<ApiError> handleMissingParam(MissingServletRequestParameterException e) {
+        return badRequest("Falta el parámetro " + e.getParameterName());
+    }
+
     @ExceptionHandler(HttpMessageNotReadableException.class)
     ResponseEntity<ApiError> handleUnreadable(HttpMessageNotReadableException e) {
         return badRequest("El cuerpo de la petición no es JSON válido");
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    ResponseEntity<ApiError> handleMethod(HttpRequestMethodNotSupportedException e) {
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(
+                        ApiError.of(
+                                "METHOD_NOT_ALLOWED",
+                                "Método " + e.getMethod() + " no permitido en esta ruta"));
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    ResponseEntity<ApiError> handleMediaType(HttpMediaTypeNotSupportedException e) {
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .body(
+                        ApiError.of(
+                                "UNSUPPORTED_MEDIA_TYPE",
+                                "El tipo de contenido no es compatible; usa application/json"));
     }
 
     @ExceptionHandler(NoResourceFoundException.class)

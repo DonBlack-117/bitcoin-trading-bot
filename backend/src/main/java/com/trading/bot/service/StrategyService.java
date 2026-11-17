@@ -4,6 +4,7 @@ import com.trading.bot.config.BotProperties;
 import com.trading.bot.domain.SignalType;
 import com.trading.bot.dto.OhlcvCandleDTO;
 import com.trading.bot.dto.SignalResponseDTO;
+import com.trading.bot.exception.InsufficientDataException;
 import com.trading.bot.indicator.Indicators;
 import org.springframework.stereotype.Service;
 
@@ -16,9 +17,10 @@ import java.util.Map;
 /** Combina cinco estrategias por votos (de −3 a +3 cada una) en una sola señal. */
 @Service
 public class StrategyService {
-
     /** Velas mínimas para que MACD (26 + 9) tenga sentido. */
-    public static final int MIN_CANDLES = 30;
+    // El indicador más largo que se calcula sin respaldo inventado marca el mínimo:
+    // MACD necesita 26 + 9 - 1 = 34 velas para una línea de señal real.
+    public static final int MIN_CANDLES = 35;
 
     /** Puntaje desde el que una señal es fuerte. */
     private static final int STRONG_SCORE = 6;
@@ -38,31 +40,34 @@ public class StrategyService {
 
     public SignalResponseDTO calculateSignal(List<OhlcvCandleDTO> candles) {
         if (candles == null || candles.size() < MIN_CANDLES) {
-            throw new IllegalArgumentException("Se necesitan al menos " + MIN_CANDLES + " velas para calcular la señal");
+            int got = candles == null ? 0 : candles.size();
+            // Falta de datos del upstream, no un error de entrada del usuario: 503, no 400.
+            throw new InsufficientDataException(
+                    "Se necesitan al menos " + MIN_CANDLES + " velas para calcular la señal; llegaron " + got);
         }
 
         int n = candles.size();
 
-        List<Double> closes  = candles.stream().map(OhlcvCandleDTO::close).toList();
-        List<Double> highs   = candles.stream().map(OhlcvCandleDTO::high).toList();
-        List<Double> lows    = candles.stream().map(OhlcvCandleDTO::low).toList();
+        List<Double> closes = candles.stream().map(OhlcvCandleDTO::close).toList();
+        List<Double> highs = candles.stream().map(OhlcvCandleDTO::high).toList();
+        List<Double> lows = candles.stream().map(OhlcvCandleDTO::low).toList();
         List<Double> volumes = candles.stream().map(OhlcvCandleDTO::volume).toList();
 
         double currentClose = closes.get(n - 1);
-        double prevClose    = closes.get(n - 2);
+        double prevClose = closes.get(n - 2);
 
         // ── Moving averages ──────────────────────────────────────────────────
-        List<Double> sma20  = Indicators.sma(closes, 20);
-        List<Double> sma50  = Indicators.sma(closes, 50);
+        List<Double> sma20 = Indicators.sma(closes, 20);
+        List<Double> sma50 = Indicators.sma(closes, 50);
         List<Double> sma200 = Indicators.sma(closes, 200);
-        List<Double> ema12  = Indicators.ema(closes, 12);
-        List<Double> ema26  = Indicators.ema(closes, 26);
+        List<Double> ema12 = Indicators.ema(closes, 12);
+        List<Double> ema26 = Indicators.ema(closes, 26);
 
-        double curEma12  = last(ema12,  currentClose);
-        double curEma26  = last(ema26,  currentClose);
-        double prevEma12 = prev(ema12,  curEma12);
-        double prevEma26 = prev(ema26,  curEma26);
-        double curSma50  = last(sma50,  currentClose);
+        double curEma12 = last(ema12, currentClose);
+        double curEma26 = last(ema26, currentClose);
+        double prevEma12 = prev(ema12, curEma12);
+        double prevEma26 = prev(ema26, curEma26);
+        double curSma50 = last(sma50, currentClose);
         double curSma200 = last(sma200, currentClose);
 
         // ── RSI ──────────────────────────────────────────────────────────────
@@ -73,34 +78,44 @@ public class StrategyService {
 
         // ── Bollinger Bands ──────────────────────────────────────────────────
         List<Indicators.Band> bands = Indicators.bollinger(closes, 20);
-        Indicators.Band bb = bands.isEmpty() ? new Indicators.Band(0, 0, 0) : bands.get(bands.size() - 1);
+        Indicators.Band bb = bands.isEmpty()
+                ? new Indicators.Band(0, 0, 0)
+                : bands.get(bands.size() - 1);
 
         // ── ATR, OBV y VWAP (últimas 24 velas) ───────────────────────────────
         double currentAtr = Indicators.atr(highs, lows, closes, 14);
         List<Double> obvSeries = Indicators.obv(closes, volumes);
-        double curObv  = obvSeries.get(n - 1);
+        double curObv = obvSeries.get(n - 1);
         double prevObv = obvSeries.get(n - 2);
         double vwap = Indicators.vwap(highs, lows, closes, volumes, 24);
 
         // ── Support / Resistance (last 50 candles) ───────────────────────────
-        int    srWindow   = Math.min(50, n);
-        double support    = lows.subList(n - srWindow, n).stream().mapToDouble(d -> d).min().orElse(currentClose * 0.95);
-        double resistance = highs.subList(n - srWindow, n).stream().mapToDouble(d -> d).max().orElse(currentClose * 1.05);
+        int srWindow = Math.min(50, n);
+        double support = lows.subList(n - srWindow, n)
+                .stream()
+                .mapToDouble(d -> d)
+                .min()
+                .orElse(currentClose * 0.95);
+        double resistance = highs.subList(n - srWindow, n)
+                .stream()
+                .mapToDouble(d -> d)
+                .max()
+                .orElse(currentClose * 1.05);
 
         // ════════════════════════════════════════════════════════════════════
         // ESTRATEGIA 1 – EMA Crossover + tendencia SMA 50/200
         // ════════════════════════════════════════════════════════════════════
         int scoreEma = 0;
         if (curEma12 > curEma26 && prevEma12 <= prevEma26) {
-            scoreEma = 2;          // cruce alcista EMA
+            scoreEma = 2; // cruce alcista EMA
         } else if (curEma12 < curEma26 && prevEma12 >= prevEma26) {
-            scoreEma = -2;         // cruce bajista EMA
+            scoreEma = -2; // cruce bajista EMA
         } else if (!sma50.isEmpty() && !sma200.isEmpty()
-                   && currentClose > curSma50 && curSma50 > curSma200) {
-            scoreEma = 1;          // tendencia alcista confirmada
+                        && currentClose > curSma50 && curSma50 > curSma200) {
+            scoreEma = 1; // tendencia alcista confirmada
         } else if (!sma50.isEmpty() && !sma200.isEmpty()
-                   && currentClose < curSma50 && curSma50 < curSma200) {
-            scoreEma = -1;         // tendencia bajista confirmada
+                        && currentClose < curSma50 && curSma50 < curSma200) {
+            scoreEma = -1; // tendencia bajista confirmada
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -108,13 +123,13 @@ public class StrategyService {
         // ════════════════════════════════════════════════════════════════════
         int scoreRsiBb = 0;
         if (currentRsi < 30 && currentClose <= bb.lower()) {
-            scoreRsiBb = 3;        // sobrevendido extremo
+            scoreRsiBb = 3; // sobrevendido extremo
         } else if (currentRsi < 40 && currentClose <= bb.lower()) {
-            scoreRsiBb = 2;        // zona de sobreventa
+            scoreRsiBb = 2; // zona de sobreventa
         } else if (currentRsi > 70 && currentClose >= bb.upper()) {
-            scoreRsiBb = -3;       // sobrecomprado extremo
+            scoreRsiBb = -3; // sobrecomprado extremo
         } else if (currentRsi > 60 && currentClose >= bb.upper()) {
-            scoreRsiBb = -2;       // zona de sobrecompra
+            scoreRsiBb = -2; // zona de sobrecompra
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -122,13 +137,13 @@ public class StrategyService {
         // ════════════════════════════════════════════════════════════════════
         int scoreMacd = 0;
         if (macd.macdLast() > macd.signalLast() && macd.macdPrev() <= macd.signalPrev()) {
-            scoreMacd = 3;         // cruce alcista MACD
+            scoreMacd = 3; // cruce alcista MACD
         } else if (macd.histLast() > 0 && macd.histLast() > macd.histPrev()) {
-            scoreMacd = 2;         // momentum alcista creciente
+            scoreMacd = 2; // momentum alcista creciente
         } else if (macd.macdLast() < macd.signalLast() && macd.macdPrev() >= macd.signalPrev()) {
-            scoreMacd = -3;        // cruce bajista MACD
+            scoreMacd = -3; // cruce bajista MACD
         } else if (macd.histLast() < 0 && macd.histLast() < macd.histPrev()) {
-            scoreMacd = -2;        // momentum bajista creciente
+            scoreMacd = -2; // momentum bajista creciente
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -136,35 +151,39 @@ public class StrategyService {
         // ════════════════════════════════════════════════════════════════════
         int scoreVol = 0;
         if (currentClose > prevClose && curObv > prevObv) {
-            scoreVol += 1;         // subida con volumen
+            scoreVol += 1; // subida con volumen
         } else if (currentClose < prevClose && curObv < prevObv) {
-            scoreVol -= 1;         // bajada con volumen
+            scoreVol -= 1; // bajada con volumen
         }
         if (currentClose > vwap) {
-            scoreVol += 1;         // precio sobre VWAP
+            scoreVol += 1; // precio sobre VWAP
         } else if (currentClose < vwap) {
-            scoreVol -= 1;         // precio bajo VWAP
+            scoreVol -= 1; // precio bajo VWAP
         }
 
         // ════════════════════════════════════════════════════════════════════
         // ESTRATEGIA 5 – Soporte y Resistencia
         // ════════════════════════════════════════════════════════════════════
         int scoreSR = 0;
-        if (currentClose <= support * 1.02) {
-            scoreSR = 3;           // precio cerca del soporte
-        } else if (currentClose >= resistance * 0.98) {
-            scoreSR = -3;          // precio cerca de la resistencia
+        boolean nearSupport = currentClose <= support * 1.02;
+        boolean nearResistance = currentClose >= resistance * 0.98;
+        // En un rango estrecho el precio toca "soporte" y "resistencia" a la vez: ahí no vota,
+        // en vez de sesgar siempre a compra con la primera rama.
+        if (nearSupport && !nearResistance) {
+            scoreSR = 3; // precio cerca del soporte
+        } else if (nearResistance && !nearSupport) {
+            scoreSR = -3; // precio cerca de la resistencia
         }
 
         // ── Tally scores ─────────────────────────────────────────────────────
         Map<String, Integer> votes = new LinkedHashMap<>();
-        votes.put("emaCruce",           scoreEma);
-        votes.put("rsiBollinger",       scoreRsiBb);
-        votes.put("macd",               scoreMacd);
-        votes.put("volumenVwap",        scoreVol);
+        votes.put("emaCruce", scoreEma);
+        votes.put("rsiBollinger", scoreRsiBb);
+        votes.put("macd", scoreMacd);
+        votes.put("volumenVwap", scoreVol);
         votes.put("soporteResistencia", scoreSR);
 
-        int scoreBuy  = votes.values().stream().filter(v -> v > 0).mapToInt(Integer::intValue).sum();
+        int scoreBuy = votes.values().stream().filter(v -> v > 0).mapToInt(Integer::intValue).sum();
         int scoreSell = votes.values().stream().filter(v -> v < 0).mapToInt(Math::abs).sum();
 
         // ── Signal decision ───────────────────────────────────────────────────
@@ -186,27 +205,28 @@ public class StrategyService {
             signal = SignalType.MANTENER;
             confidence = 50;
         }
-        boolean actionable = signal != SignalType.MANTENER && confidence >= properties.minConfidence();
+        boolean actionable = signal != SignalType.MANTENER
+                && confidence >= properties.minConfidence();
 
         String description = buildDescription(signal, confidence, currentRsi, scoreBuy, scoreSell);
 
         // ── Indicators snapshot ───────────────────────────────────────────────
         Map<String, Double> indicators = new LinkedHashMap<>();
-        indicators.put("rsi",              currentRsi);
-        indicators.put("macdLine",         macd.macdLast());
-        indicators.put("macdSignal",       macd.signalLast());
-        indicators.put("macdHistogram",    macd.histLast());
-        indicators.put("bollingerUpper",   bb.upper());
-        indicators.put("bollingerMiddle",  bb.middle());
-        indicators.put("bollingerLower",   bb.lower());
-        indicators.put("atr",              currentAtr);
-        indicators.put("vwap",             vwap);
-        indicators.put("support",          support);
-        indicators.put("resistance",       resistance);
-        indicators.put("sma20",            last(sma20,  currentClose));
-        indicators.put("sma50",            curSma50);
-        indicators.put("ema12",            curEma12);
-        indicators.put("ema26",            curEma26);
+        indicators.put("rsi", currentRsi);
+        indicators.put("macdLine", macd.macdLast());
+        indicators.put("macdSignal", macd.signalLast());
+        indicators.put("macdHistogram", macd.histLast());
+        indicators.put("bollingerUpper", bb.upper());
+        indicators.put("bollingerMiddle", bb.middle());
+        indicators.put("bollingerLower", bb.lower());
+        indicators.put("atr", currentAtr);
+        indicators.put("vwap", vwap);
+        indicators.put("support", support);
+        indicators.put("resistance", resistance);
+        indicators.put("sma20", last(sma20, currentClose));
+        indicators.put("sma50", curSma50);
+        indicators.put("ema12", curEma12);
+        indicators.put("ema26", curEma26);
 
         return new SignalResponseDTO(signal, confidence, actionable, description,
                 votes, indicators, currentRsi, currentClose, scoreBuy, scoreSell, Instant.now(clock));
@@ -214,7 +234,7 @@ public class StrategyService {
 
     // ── Decision description ──────────────────────────────────────────────────
     private String buildDescription(SignalType signal, int confidence, double rsi,
-                                    int scoreBuy, int scoreSell) {
+            int scoreBuy, int scoreSell) {
         return switch (signal) {
             case COMPRAR -> String.format(
                     "Señal de compra con %d%% confianza. RSI: %.1f | Puntaje alcista: %d vs bajista: %d",

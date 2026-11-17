@@ -13,14 +13,13 @@ import java.util.List;
 /** Mercado global y listados de CoinMarketCap, con caché de 5 min (spring.cache.caffeine.spec). */
 @Service
 public class CoinMarketCapService {
-
     private final CoinMarketCapClient client;
 
     public CoinMarketCapService(CoinMarketCapClient client) {
         this.client = client;
     }
 
-    @Cacheable("globalMarket")
+    @Cacheable(value = "globalMarket", sync = true)
     public GlobalMarketDTO getGlobalMarket() {
         JsonNode listings = client.listings(20, "USD");
         JsonNode global = client.globalMetrics("USD");
@@ -49,7 +48,7 @@ public class CoinMarketCapService {
     }
 
     /** Top N criptomonedas con precios en la moneda pedida, p. ej. "MXN" o "USD". */
-    @Cacheable(value = "cryptoList", key = "#limit + '-' + #convert")
+    @Cacheable(value = "cryptoList", key = "#limit + '-' + #convert", sync = true)
     public List<CryptoDTO> getCryptoList(int limit, String convert) {
         return parseList(client.listings(limit, convert), convert);
     }
