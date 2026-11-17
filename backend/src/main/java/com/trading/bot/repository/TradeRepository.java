@@ -9,8 +9,10 @@ import java.util.List;
 import java.util.Optional;
 
 public interface TradeRepository extends JpaRepository<Trade, Long> {
-
     Optional<Trade> findTopByStatusOrderByOpenedAtDesc(TradeStatus status);
+
+    /** Última operación cerrada, para aplicar el enfriamiento tras un stop loss o take profit. */
+    Optional<Trade> findTopByStatusOrderByClosedAtDesc(TradeStatus status);
 
     List<Trade> findTop20ByOrderByOpenedAtDesc();
 

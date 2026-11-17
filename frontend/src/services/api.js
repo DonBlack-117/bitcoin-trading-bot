@@ -9,11 +9,24 @@ export class ApiError extends Error {
   }
 }
 
-async function request(path, options) {
+const TIMEOUT_MS = 15000
+
+async function request(path, options = {}) {
+  // Una petición colgada no deja el polling esperando indefinidamente. Si el llamador pasa su propio
+  // signal (para cancelar), se combinan con AbortSignal.any.
+  const timeout = AbortSignal.timeout(TIMEOUT_MS)
+  const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout
+
   let response
   try {
-    response = await fetch(`${BASE}${path}`, options)
-  } catch {
+    response = await fetch(`${BASE}${path}`, { ...options, signal })
+  } catch (err) {
+    if (options.signal?.aborted) {
+      throw new ApiError('Petición cancelada', 'ABORTED', 0)
+    }
+    if (err?.name === 'TimeoutError') {
+      throw new ApiError('El servidor tardó demasiado en responder', 'TIMEOUT', 0)
+    }
     throw new ApiError('No hay conexión con el servidor', 'NETWORK_ERROR', 0)
   }
   if (response.status === 204) return null
@@ -37,7 +50,7 @@ export const fetchHistory = () => request('/history')
 export const fetchTrades = () => request('/trades')
 export const fetchOpenTrade = () => request('/trades/open')
 export const fetchPortfolio = () => request('/portfolio')
-export const fetchCryptoList = () => request('/analysis/cryptos')
+export const fetchCryptoList = (signal) => request('/analysis/cryptos', { signal })
 
 /** Última señal, o null mientras el backend calcula la primera (SIGNAL_NOT_READY). */
 export async function fetchSignal() {
@@ -49,10 +62,11 @@ export async function fetchSignal() {
   }
 }
 
-export function fetchAnalysis(symbol, amountMxn) {
+export function fetchAnalysis(symbol, amountMxn, signal) {
   return request('/analysis', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ symbol, amountMxn }),
+    signal,
   })
 }

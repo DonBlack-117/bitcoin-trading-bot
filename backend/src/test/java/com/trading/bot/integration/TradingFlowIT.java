@@ -49,7 +49,7 @@ class TradingFlowIT extends MariaDbContainerSupport {
 
     @Test
     void migrationsCreateDecimalColumns() {
-        assertThat(flyway.info().applied()).extracting(m -> m.getVersion().getVersion()).containsExactly("1", "2");
+        assertThat(flyway.info().applied()).extracting(m -> m.getVersion().getVersion()).containsExactly("1", "2", "3");
         String type = jdbc.queryForObject("""
                 SELECT COLUMN_TYPE FROM information_schema.COLUMNS
                 WHERE TABLE_SCHEMA = 'tradingbot' AND TABLE_NAME = 'trades' AND COLUMN_NAME = 'quantity'""", String.class);

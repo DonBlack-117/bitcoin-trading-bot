@@ -1,5 +1,6 @@
 package com.trading.bot.service;
 
+import com.trading.bot.config.BotProperties;
 import com.trading.bot.domain.CloseReason;
 import com.trading.bot.domain.SignalType;
 import com.trading.bot.domain.TradeStatus;
@@ -65,6 +66,41 @@ class TradeServiceTest {
                 argThat(mxn -> mxn.compareTo(new BigDecimal("45000.00")) == 0),
                 argThat(btc -> btc.compareTo(new BigDecimal("0.00333333")) == 0),
                 any());
+    }
+
+    @Test
+    void doesNotReopenDuringCooldownAfterAStopLoss() {
+        // Con enfriamiento de 15 min y un stop loss hace 5 min, una compra operable no reabre.
+        BotProperties withCooldown = new BotProperties(new BigDecimal("50000"), 60, new BigDecimal("0.10"),
+                new BigDecimal("100"), 2.0, 3.0, 15);
+        TradeService cooling = new TradeService(tradeRepository, portfolioService, withCooldown, TestData.CLOCK);
+
+        Trade justClosed = Trade.builder().id(7L).status(TradeStatus.CLOSED)
+                .closeReason(CloseReason.STOP_LOSS)
+                .closedAt(java.time.LocalDateTime.now(TestData.CLOCK).minusMinutes(5))
+                .build();
+        when(tradeRepository.findTopByStatusOrderByClosedAtDesc(TradeStatus.CLOSED)).thenReturn(Optional.of(justClosed));
+
+        cooling.processSignal(TestData.signal(SignalType.COMPRAR, 80, true, 1_500_000, 20_000), 3L);
+
+        verify(tradeRepository, never()).save(any());
+    }
+
+    @Test
+    void reopensAfterCooldownExpires() {
+        BotProperties withCooldown = new BotProperties(new BigDecimal("50000"), 60, new BigDecimal("0.10"),
+                new BigDecimal("100"), 2.0, 3.0, 15);
+        TradeService cooling = new TradeService(tradeRepository, portfolioService, withCooldown, TestData.CLOCK);
+
+        Trade oldClose = Trade.builder().id(7L).status(TradeStatus.CLOSED)
+                .closeReason(CloseReason.STOP_LOSS)
+                .closedAt(java.time.LocalDateTime.now(TestData.CLOCK).minusMinutes(20))
+                .build();
+        when(tradeRepository.findTopByStatusOrderByClosedAtDesc(TradeStatus.CLOSED)).thenReturn(Optional.of(oldClose));
+
+        cooling.processSignal(TestData.signal(SignalType.COMPRAR, 80, true, 1_500_000, 20_000), 3L);
+
+        verify(tradeRepository).save(any());
     }
 
     @Test

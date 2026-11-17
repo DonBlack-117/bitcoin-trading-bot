@@ -3,6 +3,7 @@ package com.trading.bot.service;
 import com.trading.bot.domain.SignalType;
 import com.trading.bot.dto.OhlcvCandleDTO;
 import com.trading.bot.dto.SignalResponseDTO;
+import com.trading.bot.exception.InsufficientDataException;
 import com.trading.bot.support.TestData;
 import org.junit.jupiter.api.Test;
 
@@ -29,9 +30,21 @@ class StrategyServiceTest {
     }
 
     @Test
-    void rejectsFewerThan30Candles() {
-        assertThrows(IllegalArgumentException.class, () -> strategy.calculateSignal(linear(29, 1000, 1)));
-        assertThrows(IllegalArgumentException.class, () -> strategy.calculateSignal(null));
+    void rejectsFewerThanMinCandles() {
+        // Menos velas de las que necesita el indicador más largo es falta de datos del upstream (503),
+        // no un error de entrada del usuario.
+        assertThrows(InsufficientDataException.class,
+                () -> strategy.calculateSignal(linear(StrategyService.MIN_CANDLES - 1, 1000, 1)));
+        assertThrows(InsufficientDataException.class, () -> strategy.calculateSignal(null));
+    }
+
+    @Test
+    void narrowRangeDoesNotVoteSupportOrResistance() {
+        // Rango estrecho: el cierre queda cerca del soporte y de la resistencia a la vez.
+        // Antes votaba siempre +3 (compra) por la primera rama; ahora no vota.
+        SignalResponseDTO signal = strategy.calculateSignal(linear(200, 1000, 0));
+        assertEquals(0, signal.votes().get("soporteResistencia"),
+                "en un rango plano no hay señal de soporte ni de resistencia");
     }
 
     @Test

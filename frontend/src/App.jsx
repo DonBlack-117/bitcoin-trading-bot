@@ -17,8 +17,13 @@ import { Panel, SectionHead, EmptyState } from './components/ui/Panel.jsx'
 import useActiveSection from './hooks/useActiveSection.js'
 import usePolling from './hooks/usePolling.js'
 import {
-  fetchTicker, fetchChart, fetchSignal, fetchMarket,
-  fetchHistory, fetchTrades, fetchPortfolio,
+  fetchTicker,
+  fetchChart,
+  fetchSignal,
+  fetchMarket,
+  fetchHistory,
+  fetchTrades,
+  fetchPortfolio,
 } from './services/api.js'
 
 export const SECTIONS = [
@@ -31,38 +36,43 @@ export const SECTIONS = [
 const SECTION_IDS = SECTIONS.map((s) => s.id)
 
 function App() {
-  const [ticker,     setTicker]     = useState(null)
-  const [signal,     setSignal]     = useState(null)
-  const [chart,      setChart]      = useState(null)
-  const [market,     setMarket]     = useState(null)
-  const [history,    setHistory]    = useState([])
-  const [trades,     setTrades]     = useState([])
-  const [portfolio,  setPortfolio]  = useState(null)
-  const [loading,    setLoading]    = useState(true)
+  const [ticker, setTicker] = useState(null)
+  const [signal, setSignal] = useState(null)
+  const [chart, setChart] = useState(null)
+  const [market, setMarket] = useState(null)
+  const [history, setHistory] = useState([])
+  const [trades, setTrades] = useState([])
+  const [portfolio, setPortfolio] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [error,      setError]      = useState(null)
+  const [error, setError] = useState(null)
   const [lastUpdate, setLastUpdate] = useState(null)
   const activeSection = useActiveSection(SECTION_IDS, !loading)
 
   const loadCore = useCallback(async () => {
-    try {
-      const [tickerData, signalData, historyData, tradesData, portfolioData] = await Promise.all([
-        fetchTicker(),
-        fetchSignal(),
-        fetchHistory(),
-        fetchTrades(),
-        fetchPortfolio(),
-      ])
-      setTicker(tickerData)
-      setSignal(signalData)
-      setHistory(historyData)
-      setTrades(tradesData)
-      setPortfolio(portfolioData)
+    // allSettled: si una fuente falla (p. ej. /trades), las demás igual se muestran, en vez de
+    // dejar el panel en "sin conexión" con el servidor vivo.
+    const [tickerR, signalR, historyR, tradesR, portfolioR] = await Promise.allSettled([
+      fetchTicker(),
+      fetchSignal(),
+      fetchHistory(),
+      fetchTrades(),
+      fetchPortfolio(),
+    ])
+    if (tickerR.status === 'fulfilled') setTicker(tickerR.value)
+    if (signalR.status === 'fulfilled') setSignal(signalR.value)
+    if (historyR.status === 'fulfilled') setHistory(historyR.value)
+    if (tradesR.status === 'fulfilled') setTrades(tradesR.value)
+    if (portfolioR.status === 'fulfilled') setPortfolio(portfolioR.value)
+
+    const results = [tickerR, signalR, historyR, tradesR, portfolioR]
+    const failed = results.find((r) => r.status === 'rejected')
+    if (failed) {
+      console.error('Error loading core data:', failed.reason)
+      setError(failed.reason?.message || 'Error al cargar los datos')
+    } else {
       setLastUpdate(new Date())
       setError(null)
-    } catch (err) {
-      console.error('Error loading core data:', err)
-      setError(err.message)
     }
   }, [])
 
@@ -110,7 +120,9 @@ function App() {
 
   return (
     <div className="app">
-      <a className="skip-link" href="#contenido">Saltar al contenido</a>
+      <a className="skip-link" href="#contenido">
+        Saltar al contenido
+      </a>
 
       <Header
         sections={SECTIONS}
@@ -136,11 +148,14 @@ function App() {
         )}
 
         <section className="section" id="resumen" aria-labelledby="resumen-title">
-          <h2 className="visually-hidden" id="resumen-title">Resumen</h2>
+          <h2 className="visually-hidden" id="resumen-title">
+            Resumen
+          </h2>
           {!ticker && !signal && (
             <Panel>
               <EmptyState icon={<Icon name="pulse" size={22} />} title="Sin precio ni señal">
-                El backend no respondió. Revisa que esté corriendo en el puerto 8080 y presiona Reintentar.
+                El backend no respondió. Revisa que esté corriendo en el puerto 8080 y presiona
+                Reintentar.
               </EmptyState>
             </Panel>
           )}
@@ -172,7 +187,9 @@ function App() {
           />
           <div className="bento">
             <div className="span-8 stack">
-              <ErrorBoundary><PriceChart chart={hasCandles ? chart : null} /></ErrorBoundary>
+              <ErrorBoundary>
+                <PriceChart chart={hasCandles ? chart : null} />
+              </ErrorBoundary>
               <ErrorBoundary>{hasCandles && <RSIChart rsi={chart.rsi} />}</ErrorBoundary>
             </div>
             <ErrorBoundary className="span-4">
@@ -188,7 +205,9 @@ function App() {
             title="Asistente de análisis"
             description="Elige cualquier criptomoneda y un monto en pesos. El bot aplica las mismas estrategias y proyecta tres escenarios."
           />
-          <ErrorBoundary><TradingAssistant /></ErrorBoundary>
+          <ErrorBoundary>
+            <TradingAssistant />
+          </ErrorBoundary>
         </section>
 
         <section className="section" id="portafolio" aria-labelledby="portafolio-title">
@@ -199,8 +218,12 @@ function App() {
             description="El bot invierte el 10% del capital por operación, con Stop Loss y Take Profit calculados con el ATR."
           />
           <div className="stack">
-            <ErrorBoundary><Portfolio portfolio={portfolio} /></ErrorBoundary>
-            <ErrorBoundary><TradeHistory trades={trades} /></ErrorBoundary>
+            <ErrorBoundary>
+              <Portfolio portfolio={portfolio} />
+            </ErrorBoundary>
+            <ErrorBoundary>
+              <TradeHistory trades={trades} />
+            </ErrorBoundary>
           </div>
         </section>
 
@@ -211,12 +234,17 @@ function App() {
             title="Mercado global"
             description="Capitalización, dominancia y las 20 criptomonedas más grandes según CoinMarketCap."
           />
-          <ErrorBoundary><GlobalMarket market={market} /></ErrorBoundary>
+          <ErrorBoundary>
+            <GlobalMarket market={market} />
+          </ErrorBoundary>
         </section>
       </main>
 
       <footer className="footer">
-        <p>Proyecto educativo. Las señales son simulaciones con indicadores técnicos y no son asesoría financiera.</p>
+        <p>
+          Proyecto educativo. Las señales son simulaciones con indicadores técnicos y no son
+          asesoría financiera.
+        </p>
         <p className="footer-meta">Datos de Bitso, Binance y CoinMarketCap</p>
       </footer>
     </div>

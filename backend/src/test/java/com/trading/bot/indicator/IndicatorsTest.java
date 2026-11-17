@@ -39,6 +39,13 @@ class IndicatorsTest {
     }
 
     @Test
+    void rsiIsFiftyOnAFlatSeries() {
+        // Serie sin cambios: RSI neutro (50), no sobrecompra extrema (100).
+        List<Double> flat = IntStream.range(0, 30).mapToObj(i -> 100.0).toList();
+        assertThat(Indicators.rsi(flat, 14)).allSatisfy(v -> assertThat(v).isEqualTo(50.0));
+    }
+
+    @Test
     void rsiIsFiftyWhenGainsAndLossesAreEqual() {
         List<Double> zigzag = IntStream.range(0, 40).mapToObj(i -> i % 2 == 0 ? 100.0 : 101.0).toList();
         List<Double> rsi = Indicators.rsi(zigzag, 14);

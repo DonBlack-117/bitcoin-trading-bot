@@ -6,7 +6,7 @@ import './PriceChart.css'
 
 /** Velas y bandas de Bollinger; ambas vienen calculadas del backend (GET /api/chart). */
 function PriceChart({ chart }) {
-  if (!chart || chart.candles.length === 0) {
+  if (!chart || !chart.candles?.length) {
     return (
       <Panel aria-labelledby="price-chart-title">
         <PanelHead eyebrow="BTC/MXN · velas de 1 h" title="Precio" id="price-chart-title" />
@@ -27,7 +27,11 @@ function PriceChart({ chart }) {
     ],
   }))
 
-  const band = (key) => chart.bollinger.map((b) => ({ x: b.timestamp * 1000, y: parseFloat(b[key].toFixed(2)) }))
+  const band = (key) =>
+    (chart.bollinger || []).map((b) => ({
+      x: b.timestamp * 1000,
+      y: parseFloat(b[key].toFixed(2)),
+    }))
   const upper = band('upper')
   const middle = band('middle')
   const lower = band('lower')
@@ -46,7 +50,15 @@ function PriceChart({ chart }) {
       zoom: { enabled: true },
       toolbar: {
         show: true,
-        tools: { download: false, selection: true, zoom: true, zoomin: true, zoomout: true, pan: true, reset: true },
+        tools: {
+          download: false,
+          selection: true,
+          zoom: true,
+          zoomin: true,
+          zoomout: true,
+          pan: true,
+          reset: true,
+        },
       },
     }),
     xaxis: {
@@ -54,14 +66,22 @@ function PriceChart({ chart }) {
       labels: {
         ...axisLabels,
         datetimeUTC: false,
-        datetimeFormatter: { year: 'yyyy', month: "MMM 'yy", day: 'dd MMM', hour: 'HH:mm' },
+        datetimeFormatter: {
+          year: 'yyyy',
+          month: "MMM 'yy",
+          day: 'dd MMM',
+          hour: 'HH:mm',
+        },
       },
       axisBorder: { color: CHART.axis },
       axisTicks: { color: CHART.axis },
     },
     yaxis: {
       tooltip: { enabled: true },
-      labels: { ...axisLabels, formatter: (val) => `$${Math.round(val).toLocaleString('es-MX')}` },
+      labels: {
+        ...axisLabels,
+        formatter: (val) => `$${Math.round(val).toLocaleString('es-MX')}`,
+      },
     },
     grid: baseGrid,
     plotOptions: {
@@ -80,15 +100,27 @@ function PriceChart({ chart }) {
 
   return (
     <Panel className="chart-panel" aria-labelledby="price-chart-title">
-      <PanelHead eyebrow="BTC/MXN · velas de 1 h" title="Precio con bandas de Bollinger" id="price-chart-title" />
+      <PanelHead
+        eyebrow="BTC/MXN · velas de 1 h"
+        title="Precio con bandas de Bollinger"
+        id="price-chart-title"
+      />
       <div className="chart-wrap">
         <ReactApexChart options={options} series={series} type="candlestick" height={400} />
       </div>
       <ul className="chart-key">
-        <li><span className="key-swatch key-up" /> Vela que cerró arriba de su apertura</li>
-        <li><span className="key-swatch key-down" /> Vela que cerró abajo</li>
-        <li><span className="key-swatch key-band" /> Bandas superior e inferior (± 2 desviaciones)</li>
-        <li><span className="key-swatch key-band key-dashed" /> Media de 20 h</li>
+        <li>
+          <span className="key-swatch key-up" /> Vela que cerró arriba de su apertura
+        </li>
+        <li>
+          <span className="key-swatch key-down" /> Vela que cerró abajo
+        </li>
+        <li>
+          <span className="key-swatch key-band" /> Bandas superior e inferior (± 2 desviaciones)
+        </li>
+        <li>
+          <span className="key-swatch key-band key-dashed" /> Media de 20 h
+        </li>
       </ul>
     </Panel>
   )

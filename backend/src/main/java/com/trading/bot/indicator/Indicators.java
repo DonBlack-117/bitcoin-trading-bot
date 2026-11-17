@@ -8,7 +8,6 @@ import java.util.List;
  * Los usan la estrategia del bot y las series de las gráficas, así ambos dan los mismos números.
  */
 public final class Indicators {
-
     private Indicators() {}
 
     /** Bandas de Bollinger en un punto: media ± 2 desviaciones estándar. */
@@ -64,7 +63,11 @@ public final class Indicators {
     }
 
     private static double rsiValue(double avgGain, double avgLoss) {
-        return avgLoss == 0 ? 100.0 : 100.0 - (100.0 / (1.0 + avgGain / avgLoss));
+        if (avgLoss == 0) {
+            // Serie plana (sin subidas ni bajadas): RSI neutro, no sobrecompra extrema.
+            return avgGain == 0 ? 50.0 : 100.0;
+        }
+        return 100.0 - (100.0 / (1.0 + avgGain / avgLoss));
     }
 
     /** Bandas de Bollinger por punto. El valor i corresponde al precio i + period - 1. */
@@ -73,7 +76,10 @@ public final class Indicators {
         for (int end = period; end <= prices.size(); end++) {
             List<Double> window = prices.subList(end - period, end);
             double mean = window.stream().mapToDouble(Double::doubleValue).average().orElse(0);
-            double variance = window.stream().mapToDouble(p -> (p - mean) * (p - mean)).average().orElse(0);
+            double variance = window.stream()
+                    .mapToDouble(p -> (p - mean) * (p - mean))
+                    .average()
+                    .orElse(0);
             double std = Math.sqrt(variance);
             result.add(new Band(mean + 2 * std, mean, mean - 2 * std));
         }
@@ -81,7 +87,8 @@ public final class Indicators {
     }
 
     /** ATR de Wilder; con pocas velas usa el 1 % del último cierre. */
-    public static double atr(List<Double> highs, List<Double> lows, List<Double> closes, int period) {
+    public static double atr(
+            List<Double> highs, List<Double> lows, List<Double> closes, int period) {
         int n = closes.size();
         if (n < period + 1) return closes.get(n - 1) * 0.01;
         double[] tr = new double[n];
@@ -113,7 +120,7 @@ public final class Indicators {
 
     /** VWAP de las últimas `period` velas con el precio típico (máximo + mínimo + cierre) / 3. */
     public static double vwap(List<Double> highs, List<Double> lows, List<Double> closes,
-                              List<Double> volumes, int period) {
+            List<Double> volumes, int period) {
         int n = closes.size();
         double tpv = 0, vol = 0;
         for (int i = Math.max(0, n - period); i < n; i++) {

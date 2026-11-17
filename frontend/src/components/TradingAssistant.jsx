@@ -18,35 +18,50 @@ function Scenario({ label, pct, finalMxn, initial, kind }) {
       </div>
       <span className="scenario-amount">{fmtMxn(finalMxn)}</span>
       <span className={`scenario-diff pnl pnl-${diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat'}`}>
-        {diff > 0 ? '+' : ''}{fmtMxn(diff)}
+        {diff > 0 ? '+' : ''}
+        {fmtMxn(diff)}
       </span>
     </div>
   )
 }
 
 export default function TradingAssistant() {
-  const [cryptoList,   setCryptoList]   = useState([])
-  const [search,       setSearch]       = useState('')
-  const [selected,     setSelected]     = useState(null)
-  const [amount,       setAmount]       = useState('')
+  const [cryptoList, setCryptoList] = useState([])
+  const [search, setSearch] = useState('')
+  const [selected, setSelected] = useState(null)
+  const [amount, setAmount] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
-  const [highlight,    setHighlight]    = useState(0)
-  const [loading,      setLoading]      = useState(false)
-  const [result,       setResult]       = useState(null)
-  const [error,        setError]        = useState(null)
-  const [fieldError,   setFieldError]   = useState({})
-  const [listLoading,  setListLoading]  = useState(true)
-  const [listFailed,   setListFailed]   = useState(false)
+  const [highlight, setHighlight] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState(null)
+  const [fieldError, setFieldError] = useState({})
+  const [listLoading, setListLoading] = useState(true)
+  const [listFailed, setListFailed] = useState(false)
   const comboRef = useRef(null)
   const amountRef = useRef(null)
+  const resultRef = useRef(null)
+  const analysisAbort = useRef(null)
   const listId = useId()
+  const cryptoErrorId = useId()
+  const amountErrorId = useId()
 
   useEffect(() => {
-    fetchCryptoList()
+    const controller = new AbortController()
+    fetchCryptoList(controller.signal)
       .then((data) => setCryptoList(data))
-      .catch(() => setListFailed(true))
+      .catch((err) => {
+        if (err?.code !== 'ABORTED') {
+          console.error('No se pudo cargar la lista de criptomonedas:', err)
+          setListFailed(true)
+        }
+      })
       .finally(() => setListLoading(false))
+    return () => controller.abort()
   }, [])
+
+  // Cancela cualquier análisis en curso al desmontar.
+  useEffect(() => () => analysisAbort.current?.abort(), [])
 
   useEffect(() => {
     function handleClick(e) {
@@ -78,7 +93,7 @@ export default function TradingAssistant() {
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setHighlight((h) => Math.min(h + 1, filtered.length - 1))
+      setHighlight((h) => Math.min(h + 1, Math.max(0, filtered.length - 1)))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setHighlight((h) => Math.max(h - 1, 0))
@@ -94,45 +109,69 @@ export default function TradingAssistant() {
     e?.preventDefault()
     const errors = {}
     if (!selected) errors.crypto = 'Elige una criptomoneda de la lista.'
-    if (!amount || +amount <= 0) errors.amount = 'Escribe un monto mayor a 0.'
+    // Number.isFinite descarta vacío, texto y 1e999 (Infinity).
+    if (!Number.isFinite(+amount) || +amount <= 0) errors.amount = 'Escribe un monto mayor a 0.'
     setFieldError(errors)
     if (errors.crypto || errors.amount) return
+
+    // Cancela un análisis anterior en vuelo: su respuesta tardía no debe pisar a la nueva.
+    analysisAbort.current?.abort()
+    const controller = new AbortController()
+    analysisAbort.current = controller
 
     setLoading(true)
     setResult(null)
     setError(null)
     try {
-      const data = await fetchAnalysis(selected.symbol, parseFloat(amount))
+      const data = await fetchAnalysis(selected.symbol, parseFloat(amount), controller.signal)
+      if (controller.signal.aborted) return
       setResult(data)
+      // Lleva el foco al resultado para que un lector de pantalla lo anuncie.
+      requestAnimationFrame(() => resultRef.current?.focus())
     } catch (err) {
+      if (err?.code === 'ABORTED') return
       setError(err.message || 'No se pudo analizar. Intenta de nuevo.')
     } finally {
-      setLoading(false)
+      if (analysisAbort.current === controller) {
+        setLoading(false)
+        analysisAbort.current = null
+      }
     }
   }
 
   const tone = result ? toneOfStrength(result.signal, result.strong) : 'hold'
-  const activeOption = showDropdown && filtered[highlight] ? `${listId}-${filtered[highlight].symbol}` : undefined
+  const activeOption =
+    showDropdown && filtered[highlight] ? `${listId}-${filtered[highlight].symbol}` : undefined
 
   return (
     <div className="assistant">
       <Panel className="assistant-form-panel">
         <form className="assistant-form" onSubmit={handleAnalyze} noValidate>
           <div className={`field ${fieldError.crypto ? 'has-error' : ''}`} ref={comboRef}>
-            <label className="field-label" htmlFor="ta-crypto">Criptomoneda</label>
+            <label className="field-label" htmlFor="ta-crypto">
+              Criptomoneda
+            </label>
             <div className="input-shell">
               <Icon name="search" size={16} />
               <input
                 id="ta-crypto"
                 className="input"
                 role="combobox"
+                aria-haspopup="listbox"
                 aria-expanded={showDropdown && filtered.length > 0}
-                aria-controls={listId}
+                aria-controls={showDropdown && filtered.length > 0 ? listId : undefined}
                 aria-autocomplete="list"
                 aria-activedescendant={activeOption}
                 aria-invalid={Boolean(fieldError.crypto)}
+                aria-describedby={fieldError.crypto ? cryptoErrorId : undefined}
                 autoComplete="off"
-                placeholder={listLoading ? 'Cargando lista…' : listFailed ? 'No se pudo cargar la lista' : 'BTC, ETH, SOL…'}
+                placeholder={
+                  listLoading
+                    ? 'Cargando lista…'
+                    : listFailed
+                      ? 'No se pudo cargar la lista'
+                      : 'BTC, ETH, SOL…'
+                }
                 value={search}
                 disabled={listLoading || listFailed}
                 onChange={(e) => {
@@ -158,17 +197,25 @@ export default function TradingAssistant() {
                     onMouseEnter={() => setHighlight(i)}
                   >
                     <span className="combo-rank">{c.rank}</span>
-                    <span className="combo-name"><b>{c.symbol}</b> <span>{c.name}</span></span>
+                    <span className="combo-name">
+                      <b>{c.symbol}</b> <span>{c.name}</span>
+                    </span>
                     <Delta value={c.pct24h} digits={1} />
                   </li>
                 ))}
               </ul>
             )}
-            {fieldError.crypto && <p className="field-error">{fieldError.crypto}</p>}
+            {fieldError.crypto && (
+              <p className="field-error" id={cryptoErrorId} role="alert">
+                {fieldError.crypto}
+              </p>
+            )}
           </div>
 
           <div className={`field ${fieldError.amount ? 'has-error' : ''}`}>
-            <label className="field-label" htmlFor="ta-amount">Monto a invertir</label>
+            <label className="field-label" htmlFor="ta-amount">
+              Monto a invertir
+            </label>
             <div className="input-shell">
               <span className="input-affix">$</span>
               <input
@@ -180,6 +227,7 @@ export default function TradingAssistant() {
                 min="1"
                 placeholder="1,000"
                 aria-invalid={Boolean(fieldError.amount)}
+                aria-describedby={fieldError.amount ? amountErrorId : undefined}
                 value={amount}
                 onChange={(e) => {
                   setAmount(e.target.value)
@@ -188,30 +236,65 @@ export default function TradingAssistant() {
               />
               <span className="input-affix">MXN</span>
             </div>
-            {fieldError.amount && <p className="field-error">{fieldError.amount}</p>}
+            {fieldError.amount && (
+              <p className="field-error" id={amountErrorId} role="alert">
+                {fieldError.amount}
+              </p>
+            )}
           </div>
 
           <button className="btn btn-primary" type="submit" disabled={loading}>
             <span>{loading ? 'Analizando…' : 'Analizar'}</span>
             <span className="btn-nub" aria-hidden="true">
-              <Icon name={loading ? 'refresh' : 'arrowRight'} size={16} className={loading ? 'is-spinning' : ''} />
+              <Icon
+                name={loading ? 'refresh' : 'arrowRight'}
+                size={16}
+                className={loading ? 'is-spinning' : ''}
+              />
             </span>
           </button>
         </form>
-        {error && <p className="form-error" role="alert"><Icon name="alert" size={16} /> {error}</p>}
+        {error && (
+          <p className="form-error" role="alert">
+            <Icon name="alert" size={16} /> {error}
+          </p>
+        )}
+        {/* Región siempre montada: un lector de pantalla anuncia el estado de la consulta. */}
+        <p className="visually-hidden" role="status">
+          {loading ? 'Analizando…' : ''}
+        </p>
       </Panel>
 
       {result && (
-        <div className={`assistant-result tone-${tone}`} aria-live="polite" data-testid="assistant-result">
+        <div
+          className={`assistant-result tone-${tone}`}
+          ref={resultRef}
+          tabIndex={-1}
+          aria-live="polite"
+          data-testid="assistant-result"
+        >
           <Panel className="result-verdict">
-            <p className="eyebrow">{result.name} ({result.symbol})</p>
+            <p className="eyebrow">
+              {result.name} ({result.symbol})
+            </p>
             <div className="verdict">
-              <span className="verdict-icon" aria-hidden="true"><Icon name={SIGNAL_ICON[tone]} size={24} /></span>
-              <span className="verdict-word" data-testid="assistant-signal">{result.signal}</span>
+              <span className="verdict-icon" aria-hidden="true">
+                <Icon name={SIGNAL_ICON[tone]} size={24} />
+              </span>
+              <span className="verdict-word" data-testid="assistant-signal">
+                {result.signal}
+              </span>
               {!result.strong && result.signal !== 'MANTENER' && (
-                <span className="signal-weak" title="Inclinación débil: conviene esperar una confirmación">Débil</span>
+                <span
+                  className="signal-weak"
+                  title="Inclinación débil: conviene esperar una confirmación"
+                >
+                  Débil
+                </span>
               )}
-              <span className="verdict-conf"><b>{result.confidence}%</b> confianza</span>
+              <span className="verdict-conf">
+                <b>{result.confidence}%</b> confianza
+              </span>
             </div>
 
             <div className="result-price">
@@ -220,20 +303,43 @@ export default function TradingAssistant() {
                 <span className="stat-value">{fmtMxn(result.priceMxn)}</span>
               </div>
               <div className="result-changes">
-                {result.pct1h != null && <span><small>1 h</small><Delta value={result.pct1h} /></span>}
-                {result.pct24h != null && <span><small>24 h</small><Delta value={result.pct24h} /></span>}
-                {result.pct7d != null && <span><small>7 d</small><Delta value={result.pct7d} /></span>}
+                {result.pct1h != null && (
+                  <span>
+                    <small>1 h</small>
+                    <Delta value={result.pct1h} />
+                  </span>
+                )}
+                {result.pct24h != null && (
+                  <span>
+                    <small>24 h</small>
+                    <Delta value={result.pct24h} />
+                  </span>
+                )}
+                {result.pct7d != null && (
+                  <span>
+                    <small>7 d</small>
+                    <Delta value={result.pct7d} />
+                  </span>
+                )}
               </div>
             </div>
 
             <p className="result-units">
               Con <b>{fmtMxn(parseFloat(result.amountMxn))}</b> compras{' '}
-              <b>{result.unitsToBuy < 0.01 ? result.unitsToBuy.toFixed(6) : result.unitsToBuy.toFixed(4)} {result.symbol}</b>.
+              <b>
+                {result.unitsToBuy < 0.01
+                  ? result.unitsToBuy.toFixed(6)
+                  : result.unitsToBuy.toFixed(4)}{' '}
+                {result.symbol}
+              </b>
+              .
             </p>
 
             <h4 className="reasons-title">Por qué</h4>
             <ul className="reasons">
-              {result.reasons.map((r, i) => <li key={i}>{r}</li>)}
+              {result.reasons.map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
             </ul>
           </Panel>
 
@@ -241,11 +347,31 @@ export default function TradingAssistant() {
             <p className="eyebrow">Si inviertes {fmtMxn(parseFloat(result.amountMxn))} hoy</p>
             <h4 className="panel-title">Escenarios proyectados</h4>
             <div className="scenarios">
-              <Scenario label="Optimista" kind="optimistic" pct={result.optimisticPct} finalMxn={result.optimisticMxn} initial={result.amountMxn} />
-              <Scenario label="Esperado" kind="expected" pct={result.expectedPct} finalMxn={result.expectedMxn} initial={result.amountMxn} />
-              <Scenario label="Riesgo" kind="risk" pct={result.riskPct} finalMxn={result.riskMxn} initial={result.amountMxn} />
+              <Scenario
+                label="Optimista"
+                kind="optimistic"
+                pct={result.optimisticPct}
+                finalMxn={result.optimisticMxn}
+                initial={result.amountMxn}
+              />
+              <Scenario
+                label="Esperado"
+                kind="expected"
+                pct={result.expectedPct}
+                finalMxn={result.expectedMxn}
+                initial={result.amountMxn}
+              />
+              <Scenario
+                label="Riesgo"
+                kind="risk"
+                pct={result.riskPct}
+                finalMxn={result.riskMxn}
+                initial={result.amountMxn}
+              />
             </div>
-            <p className="scenarios-note">Proyecciones con la volatilidad reciente. No garantizan resultados.</p>
+            <p className="scenarios-note">
+              Proyecciones con la volatilidad reciente. No garantizan resultados.
+            </p>
           </Panel>
         </div>
       )}
